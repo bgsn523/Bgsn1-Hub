@@ -10,59 +10,6 @@ repeat
     task.wait()
 until LocalPlayer
 
--- [[ 1. 클린 초기화 (Clean Init) ]]
-if not game:IsLoaded() then
-    game.Loaded:Wait()
-end
-
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local HitBoxRemote = ReplicatedStorage:WaitForChild("Remote"):WaitForChild("HitBox")
-local RunService = game:GetService("RunService")
-
--- 플레이어 로드 대기
-repeat task.wait() until LocalPlayer
-
--- [[ 2. 네트워크 필터링 (Silent Packet Filter) ]]
--- 게임이 서버로 보내는 모든 신호(FireServer)를 검문합니다.
-local mt = getrawmetatable(game)
-local oldNamecall = mt.__namecall
-setreadonly(mt, false)
-
-mt.__namecall = newcclosure(function(self, ...)
-    local method = getnamecallmethod()
-    local args = {...}
-
-    -- 게임이 서버로 무언가 보내려고 할 때 (FireServer)
-    if method == "FireServer" and self:IsA("RemoteEvent") then
-        
-        -- [차단할 리모트 목록]
-        -- 리모트 스파이에서 확인된 '감지용' 리모트 이름들을 여기에 적습니다.
-        -- 예: "Error", "Log", "Ban", "Admins" 등이 이름에 포함된 경우
-        local remoteName = self.Name
-
-        if remoteName == "Error" or remoteName == "Log" or remoteName == "AnalyticsPipeline" then
-            -- 이 리모트는 서버로 보내지 않고 조용히 폐기(Drop)합니다.
-            -- 기존처럼 wait(9e9)를 쓰지 않으므로 '멈춤' 현상이 없어 서버가 눈치채지 못합니다.
-            return nil 
-        end
-
-        -- [데이터 위조 (Spoofing) - 선택 사항]
-        -- 만약 특정 리모트의 데이터를 바꿔치기하고 싶다면 여기서 args를 수정합니다.
-        -- 예: 데미지 관련 데이터가 비정상적일 때 정상 수치로 변경 등
-    end
-
-    -- Kick 함수 호출 감지 (서버가 아닌 로컬 스크립트가 킥을 시도할 경우)
-    if method == "Kick" then
-        -- 킥 명령을 무시하되, 서버 연결을 끊지 않고 자연스럽게 넘깁니다.
-        return nil
-    end
-
-    -- 문제가 없는 정상적인 신호는 그대로 서버로 보냅니다.
-    return oldNamecall(self, ...)
-end)
-
 
 -- [[ 서비스 및 기본 변수 정의 ]] [cite: 167]
 local Players = game:GetService("Players")
@@ -87,13 +34,12 @@ local AutoFarmConfig = {
 
 -- [[ 캐릭터 설정 테이블 ]]
 local CharacterSettings = {
-    WalkSpeed = 16,
-    JumpPower = 50,
-    AntiAFKEnabled = true,
-    LoopEnabled = true,
-    NoClipEnabled = false
+    WalkSpeed = 16,        -- 이동 속도
+    JumpPower = 50,        -- 점프력
+    AntiAFKEnabled = true, -- 잠수(AFK) 방지 여부
+    LoopEnabled = true,    -- 속도/점프력 유지 여부
+    NoClipEnabled = false  -- 벽 통과 여부
 }
-
 -- [[ 기타 필수 변수들 (이게 없으면 오류가 납니다) ]]
 local AttackDirection = "Front"
 local DirectionAngles = {Front = 0, Back = 180, Up = -90, Down = 90}
@@ -1700,8 +1646,33 @@ CharLeftGroup:AddToggle('AntiAFKToggle', {
     end
 })
 
--- 속도 강제 적용 토글
-CharLeftGroup:AddToggle('LoopToggle', {Text = '속도 강제 적용', Default = true}) -- [cite: 298]
+-- [[ 핵심 수정 부분: 속도 강제 적용 로직 추가 ]] --
+CharLeftGroup:AddToggle('LoopToggle', {
+    Text = '속도 강제 적용', 
+    Default = true,
+    Tooltip = '체크 시 설정한 속도와 점프력을 계속 유지합니다.',
+    Callback = function(Value)
+        CharacterSettings.LoopEnabled = Value
+    end
+})
+
+-- 매 프레임마다 속도를 강제로 적용하는 루프 (이게 없어서 작동 안 했던 것임)
+game:GetService("RunService").Heartbeat:Connect(function()
+    -- '속도 강제 적용'이 켜져있고, 캐릭터가 존재할 때만 실행
+    if CharacterSettings.LoopEnabled and LocalPlayer.Character then
+        local humanoid = LocalPlayer.Character:FindFirstChild("Humanoid")
+        if humanoid then
+            -- 현재 설정된 값으로 강제 변경
+            humanoid.WalkSpeed = CharacterSettings.WalkSpeed
+            humanoid.JumpPower = CharacterSettings.JumpPower
+            
+            -- 오토팜 사용 시 엉키는 것을 방지하기 위해 사용
+            if humanoid.UseJumpPower == false then
+                humanoid.UseJumpPower = true
+            end
+        end
+    end
+end)
 
 -- 노클립 토글
 NoClipRightGroup:AddToggle('NoClipToggle', {
@@ -1731,19 +1702,6 @@ EspGroup:AddToggle('PlayerESP_Toggle', {
     end
 })
 
--- 속도/점프력 지속 적용 (게임 내 강제 변경 방지)
-RunService.Stepped:Connect(function()
-    if CharacterSettings.LoopEnabled then
-        local character = LocalPlayer.Character
-        if character then
-            local humanoid = character:FindFirstChildOfClass("Humanoid")
-            if humanoid then
-                humanoid.WalkSpeed = CharacterSettings.WalkSpeed -- [cite: 300]
-                humanoid.JumpPower = CharacterSettings.JumpPower
-            end
-        end
-    end
-end)
 
 -- [[ 애니메이션 관련 함수 ]]
 local function getAnimFolder()
