@@ -59,9 +59,21 @@ local TeleportLocations = {
 -- [[ AFK 방지 로직 ]]
 -- 사용자가 20분 이상 입력이 없으면 튕기는 것을 방지하기 위해 가상 클릭 발생
 if CharacterSettings.AntiAFKEnabled then
-    LocalPlayer.Idled:Connect(function()
-        VirtualUser:CaptureController()
-        VirtualUser:ClickButton2(Vector2.new())
+    task.spawn(function()
+        while task.wait(600) do
+            if CharacterSettings.AntiAFKEnabled then  -- 토글 off면 멈춤
+                pcall(function()
+                    VirtualUser:CaptureController()
+                    VirtualUser:ClickButton2(Vector2.new())
+                    task.wait(0.15)
+                    VirtualUser:ClickButton2(Vector2.new())
+                    task.wait(0.15)
+                    VirtualUser:ClickButton2(Vector2.new())
+                end)
+            else
+                break  -- off면 루프 종료
+            end
+        end
     end)
 end
 
@@ -403,7 +415,7 @@ local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
 
 -- [[ 메인 윈도우 생성 ]]
 local Window = Library:CreateWindow({
-    Title = 'Bgsn1 Hub | 제작자:nuguseyo_12', -- [cite: 196]
+    Title = 'Bgsn1 Hub | guns.lol/bgsn1',
     Center = true,
     AutoShow = true,
     TabPadding = 8,
