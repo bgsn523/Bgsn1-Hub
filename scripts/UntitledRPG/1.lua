@@ -71,7 +71,7 @@ local TeleportLocations = {
 -- 사용자가 20분 이상 입력이 없으면 튕기는 것을 방지하기 위해 가상 클릭 발생
 if CharacterSettings.AntiAFKEnabled then
     task.spawn(function()
-        while task.wait(600) do  -- 600초 = 10분 정확히 이 미친 새끼야
+        while task.wait(600) do
             if CharacterSettings.AntiAFKEnabled then  -- 토글 off면 멈춤
                 pcall(function()
                     VirtualUser:CaptureController()
