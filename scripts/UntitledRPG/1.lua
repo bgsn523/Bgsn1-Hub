@@ -1060,6 +1060,60 @@ SkinChangerGroup:AddButton({
 loadSavedDisguises()
 refreshDisguiseButtons()
 
+-- [[ 💾 위치 저장 및 자동 복귀 (캐릭터 체인저 밑에 추가됨) ]]
+local SavePosGroup = Tabs.Main:AddRightGroupbox('위치 저장') -- Main 탭 오른쪽에 추가
+
+local SavedPosition = nil -- 저장된 위치
+local AutoTpOnDeath = false -- 토글 상태
+
+-- 1. [버튼] 현재 위치 저장
+SavePosGroup:AddButton({
+    Text = '현재 위치 저장',
+    Func = function()
+        local p = game.Players.LocalPlayer
+        if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            SavedPosition = p.Character.HumanoidRootPart.CFrame
+            
+            -- 알림 메시지
+            game.StarterGui:SetCore("SendNotification", {
+                Title = "위치 저장 완료",
+                Text = "현재 위치가 저장되었습니다.",
+                Duration = 2
+            })
+        else
+            game.StarterGui:SetCore("SendNotification", {
+                Title = "오류",
+                Text = "캐릭터 위치를 찾을 수 없습니다.",
+                Duration = 2
+            })
+        end
+    end,
+    Tooltip = '현재 서 있는 위치를 기억합니다.'
+})
+
+-- 2. [토글] 죽으면 자동 복귀
+SavePosGroup:AddToggle('AutoTpToggle', {
+    Text = '죽으면 자동 복귀',
+    Default = false,
+    Tooltip = '켜두면 리스폰 될 때마다 저장된 위치로 이동합니다.',
+    Callback = function(Value)
+        AutoTpOnDeath = Value
+    end
+})
+
+-- 3. [로직] 리스폰 감지 및 이동
+game.Players.LocalPlayer.CharacterAdded:Connect(function(newChar)
+    if AutoTpOnDeath and SavedPosition then
+        -- 캐릭터 로딩 대기 (1초)
+        task.wait(1)
+        
+        local hrp = newChar:WaitForChild("HumanoidRootPart", 10)
+        if hrp then
+            hrp.CFrame = SavedPosition -- 저장된 위치로 텔레포트
+        end
+    end
+end)
+
 -- [[ 텔레포트 그룹 (Teleport 탭) ]]
 local LunaVillageGroup = Tabs.Teleport:AddRightGroupbox('스폰포인트')
 
