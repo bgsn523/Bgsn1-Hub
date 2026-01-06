@@ -1114,6 +1114,354 @@ game.Players.LocalPlayer.CharacterAdded:Connect(function(newChar)
     end
 end)
 
+
+--===================================================
+-- 회피
+--===================================================
+
+--[[
+    [자동 회피 스크립트]
+    기능 1: 몹의 공격 모션(평타)을 감지하여 순간적으로 회피
+    기능 2: 바닥의 위험 구역(빨간 장판)을 감지하여 회피
+    회피 방식: 캐릭터의 히트박스를 순간적으로 지하로 내렸다가 올리는 방식 (화면상으로는 변화가 없어 보임)
+]]
+
+-- 상태 변수 및 설정값 초기화
+local HitAnimToggle = false       -- 평타 회피 켜기/끄기
+local RedPartToggle = false       -- 장판(스킬) 회피 켜기/끄기
+local noclipActive = false        -- 현재 회피 동작(노클립/무적) 수행 중인지 여부
+local InvisibleState = false      -- 캐릭터 반투명 상태 여부
+local attackingMobs = {}          -- 현재 나를 공격 중인 몹 목록
+local insideRedPart = false       -- 현재 빨간 장판 위에 있는지 여부
+local RedReleaseDelay = 1.0       -- 장판에서 벗어난 후에도 회피를 유지할 시간 (초)
+local connections = {}            -- 기능 해제 시 연결을 끊기 위해 이벤트들을 저장하는 테이블
+
+-- 기본 서비스 및 플레이어 참조
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local lp = Players.LocalPlayer
+local MOBS = Workspace:WaitForChild("Mobs") -- 몹들이 들어있는 폴더
+
+local character, humanoid, root, bodyParts = nil, nil, nil, {}
+
+-- 감지할 몹 리스트 (이 이름들에 해당하는 몹만 평타 회피 작동)
+local VALID_MOBS = {
+    ["갑옷 고블린"] = true, ["겨울성의 수호신"] = true, ["고블린"] = true,
+    ["나락화 박쥐"] = true, ["나락화 수호자"] = true, ["눈사람"] = true,
+    ["동굴 골렘"] = true, ["마그마 블래스터"] = true, ["무사"] = true,
+    ["미라"] = true, ["샌드 슬라임"] = true, ["선혈의 사무라이"] = true,
+    ["슬라임"] = true, ["예티"] = true, ["용암 골렘"] = true,
+    ["타이탄 아머로드"] = true, ["파괴의 광선, 인큐네이션"] = true,
+    ["피라미드 수호자"] = true,
+}
+
+-- 캐릭터의 HumanoidRootPart(중심점) 가져오기
+local function getHRP()
+    local c = lp.Character
+    return c and c:FindFirstChild("HumanoidRootPart")
+end
+
+-- 캐릭터가 다시 태어날 때마다 변수 및 신체 부위 재설정
+local function setupCharacter()
+    character = lp.Character or lp.CharacterAdded:Wait()
+    humanoid = character:WaitForChild("Humanoid")
+    root = character:WaitForChild("HumanoidRootPart")
+    
+    bodyParts = {}
+    -- 회피 시 반투명하게 만들 신체 부위들을 수집 (RootPart 제외)
+    for _, v in pairs(character:GetDescendants()) do
+        if v:IsA("BasePart") and v ~= root then
+            table.insert(bodyParts, v)
+        end
+    end
+end
+
+-- 회피 중일 때 캐릭터를 반투명하게 설정하는 함수 (시각적 효과)
+local function setInvisible(on)
+    if on == InvisibleState then return end
+    InvisibleState = on
+    
+    for _, p in pairs(bodyParts) do
+        pcall(function() p.Transparency = on and 0.5 or 0 end)
+    end
+end
+
+-- 초기 캐릭터 셋업 및 리스폰 감지
+setupCharacter()
+table.insert(connections, lp.CharacterAdded:Connect(function()
+    task.wait(1)
+    setupCharacter()
+end))
+
+-- 기능(토글)을 껐을 때 모든 이벤트 연결 해제 및 상태 초기화
+local function cleanupAll()
+    for i = #connections, 1, -1 do
+        local conn = connections[i]
+        pcall(function() conn:Disconnect() end)
+        table.remove(connections, i)
+    end
+    
+    attackingMobs = {}
+    insideRedPart = false
+    noclipActive = false
+    InvisibleState = false
+    
+    -- 캐릭터 투명도 원상복구
+    for _, p in pairs(bodyParts) do 
+        pcall(function() p.Transparency = 0 end)
+    end
+end
+
+-- UI 그룹 생성 (UI 라이브러리에 따라 다를 수 있음)
+local EvadeGroup = Tabs.Main:AddRightGroupbox('자동 회피')
+
+-- -----------------------------------------------------------
+-- [1] 평타 회피 기능 (Mob Hit Animation Detection)
+-- -----------------------------------------------------------
+EvadeGroup:AddToggle('HitAnimToggle', {
+    Text = '평타 회피',
+    Default = false,
+    Tooltip = 'Hit 애니메이션 감지',
+    Callback = function(Value)
+        HitAnimToggle = Value
+        
+        if Value then
+            local HIT_ANIM_IDS = {}
+            
+            -- 몹들의 "Hit" 애니메이션 ID를 수집하는 함수
+            local function updateHitAnimIds()
+                HIT_ANIM_IDS = {}
+                for _, mob in ipairs(MOBS:GetChildren()) do
+                    if VALID_MOBS[mob.Name] then
+                        local hitAnim = mob:FindFirstChild("Hit", true)
+                        if hitAnim and hitAnim:IsA("Animation") then
+                            HIT_ANIM_IDS[hitAnim.AnimationId] = true
+                        end
+                    end
+                end
+            end
+            updateHitAnimIds()
+
+            local hooked = {} -- 중복 연결 방지용 테이블
+
+            -- 각 몹의 휴머노이드에 애니메이션 감지 이벤트를 연결하는 함수
+            local function hookAnimator(humanoid, mobRoot)
+                if hooked[humanoid] then return end
+                hooked[humanoid] = true
+
+                local animator = humanoid:FindFirstChildOfClass("Animator")
+                if not animator then return end
+
+                -- 몹이 죽으면 공격 목록에서 제거
+                table.insert(connections, humanoid.Died:Connect(function()
+                    attackingMobs[mobRoot] = nil
+                end))
+
+                -- 몹이 사라지면(Despawn) 공격 목록에서 제거
+                table.insert(connections, mobRoot.AncestryChanged:Connect(function(_, parent)
+                    if not parent then
+                        attackingMobs[mobRoot] = nil
+                    end
+                end))
+
+                -- 핵심: 몹이 애니메이션을 재생할 때 감지
+                table.insert(connections, animator.AnimationPlayed:Connect(function(track)
+                    local anim = track.Animation
+                    -- 재생된 애니메이션이 "공격(Hit)" 애니메이션인지 확인
+                    if not anim or not HIT_ANIM_IDS[anim.AnimationId] then return end
+
+                    local hrp = getHRP()
+                    if not hrp then return end
+
+                    -- 내 캐릭터와 몹 사이의 거리가 25스터드 이내일 때만 회피 발동
+                    if (hrp.Position - mobRoot.Position).Magnitude <= 25 then
+                        attackingMobs[mobRoot] = true
+                        setInvisible(true) -- 시각적 알림
+                        noclipActive = true -- 회피 시작
+
+                        -- 애니메이션이 끝나면 회피 종료
+                        track.Stopped:Once(function()
+                            attackingMobs[mobRoot] = nil
+                        end)
+                    end
+                end))
+            end
+
+            -- 전체 몹 스캔 및 이벤트 연결
+            local function scanMobs()
+                for _, mob in ipairs(MOBS:GetChildren()) do
+                    if VALID_MOBS[mob.Name] then
+                        local hum = mob:FindFirstChildOfClass("Humanoid")
+                        local rootPart = mob:FindFirstChild("HumanoidRootPart")
+                        if hum and rootPart then
+                            hookAnimator(hum, rootPart)
+                        end
+                    end
+                end
+            end
+
+            scanMobs()
+            -- 새로운 몹이 스폰될 때마다 감지 목록 갱신
+            table.insert(connections, MOBS.ChildAdded:Connect(function()
+                task.wait()
+                updateHitAnimIds()
+                scanMobs()
+            end))
+        else
+            -- 토글 끄면 정리
+            cleanupAll()
+        end
+    end
+})
+
+-- -----------------------------------------------------------
+-- [2] 스킬 회피 기능 (Red Part Detection)
+-- -----------------------------------------------------------
+EvadeGroup:AddToggle('RedPartToggle', {
+    Text = '스킬 회피',
+    Default = false,
+    Tooltip = '빨간 파트 감지',
+    Callback = function(Value)
+        RedPartToggle = Value
+        
+        if Value then
+            local redAttackParts = {}
+            
+            -- 해당 파트가 "공격용 빨간 장판"인지 판별하는 함수
+            local function isRedAttackPart(part)
+                if not part:IsA("BasePart") then return false end
+                if part.Transparency >= 0.8 then return false end -- 너무 투명하면 무시
+                local c = part.Color
+                -- 색상이 붉은 계열인지 확인 (R값 높음, G/B값 낮음)
+                return c.R >= 0.6 and c.G < 0.4 and c.B < 0.4
+            end
+
+            -- 맵 전체에서 빨간 파트 찾기
+            for _, obj in ipairs(Workspace:GetDescendants()) do
+                if isRedAttackPart(obj) then 
+                    redAttackParts[obj] = true 
+                end
+            end
+
+            -- 새로 생기는 파트 감지 (스킬 시전 시 생성되는 파트)
+            table.insert(connections, Workspace.DescendantAdded:Connect(function(obj)
+                if isRedAttackPart(obj) then 
+                    redAttackParts[obj] = true 
+                end
+            end))
+
+            -- 사라지는 파트 목록에서 제거
+            table.insert(connections, Workspace.DescendantRemoving:Connect(function(obj)
+                redAttackParts[obj] = nil
+            end))
+
+            local lastRedHitTime = 0
+            local RED_CHECK_INTERVAL = 0 -- 매 프레임 체크 (필요시 값 조절 가능)
+            local lastRedCheck = 0
+
+            -- 주기적으로 내가 빨간 파트 위에 있는지 검사
+            table.insert(connections, RunService.Heartbeat:Connect(function()
+                if not root or not humanoid then return end
+                local now = tick()
+                
+                if now - lastRedCheck >= RED_CHECK_INTERVAL then
+                    lastRedCheck = now
+                    local pos = root.Position
+                    local hitRed = false
+                    
+                    -- 등록된 모든 빨간 파트와 거리/범위 체크
+                    for part, _ in pairs(redAttackParts) do
+                        if part.Parent and (part.Position - pos).Magnitude <= 60 then
+                            local localPos = part.CFrame:PointToObjectSpace(pos)
+                            local half = part.Size * 0.5
+                            -- 내 위치가 파트의 크기(박스) 안에 들어와 있는지 확인
+                            if math.abs(localPos.X) <= half.X and math.abs(localPos.Z) <= half.Z then
+                                hitRed = true
+                                break
+                            end
+                        end
+                    end
+                    
+                    if hitRed then
+                        lastRedHitTime = now
+                        if not insideRedPart then
+                            insideRedPart = true
+                            setInvisible(true)
+                            noclipActive = true -- 회피 시작
+                        end
+                    else
+                        -- 장판에서 벗어났어도 설정한 딜레이(RedReleaseDelay)만큼 더 회피 유지
+                        if insideRedPart and (now - lastRedHitTime) >= RedReleaseDelay then
+                            insideRedPart = false
+                        end
+                    end
+                end
+            end))
+        else
+            cleanupAll()
+        end
+    end
+})
+
+EvadeGroup:AddSlider('RedReleaseSlider', {
+    Text = '스킬 회피 유지 시간',
+    Default = 1.0,
+    Min = 0,
+    Max = 10,
+    Rounding = 1,
+    Tooltip = '빨간 파트 감지 후 회피 유지시간',
+    Callback = function(Value)
+        RedReleaseDelay = Value
+    end
+})
+
+-- -----------------------------------------------------------
+-- [3] 메인 루프: 실제 회피 동작 수행 (좌표 이동)
+-- -----------------------------------------------------------
+table.insert(connections, RunService.Heartbeat:Connect(function()
+    if not root or not humanoid then return end
+    
+    -- 유효하지 않은 몹(사라짐 등) 정리
+    for mobRoot in pairs(attackingMobs) do
+        if not mobRoot or not mobRoot.Parent or not mobRoot:IsDescendantOf(workspace) then
+            attackingMobs[mobRoot] = nil
+        end
+    end
+
+    -- 회피가 필요한 상황인지 종합 판단
+    local shouldBeInvisible = (HitAnimToggle and next(attackingMobs) ~= nil) or (RedPartToggle and insideRedPart)
+    
+    -- 회피 상황이 끝났으면 상태 복구
+    if InvisibleState and not shouldBeInvisible then
+        setInvisible(false)
+        noclipActive = false
+    end
+    
+    -- [핵심 회피 로직]
+    -- noclipActive가 켜져 있으면 캐릭터의 히트박스를 땅 밑으로 내림
+    if noclipActive and root and humanoid then
+        local oldCF = root.CFrame
+        local oldOffset = humanoid.CameraOffset
+
+        -- 캐릭터를 지하 50스터드로 이동 (공격을 피하기 위함)
+        local downCF = oldCF * CFrame.new(0, -50, 0)
+        
+        -- 카메라는 원래 위치에 고정 (화면이 덜컹거리지 않게 보정)
+        local camOffset = downCF:ToObjectSpace(CFrame.new(oldCF.Position)).Position
+
+        root.CFrame = downCF
+        humanoid.CameraOffset = camOffset
+        
+        -- 한 프레임 대기 (서버가 내가 지하에 있다고 인식하게 함)
+        RunService.RenderStepped:Wait()
+        
+        -- 다시 원래 위치로 복귀 (매우 빠르게 일어나서 눈에는 안 보임)
+        root.CFrame = oldCF
+        humanoid.CameraOffset = oldOffset
+    end
+end))
+
 -- [[ 텔레포트 그룹 (Teleport 탭) ]]
 local LunaVillageGroup = Tabs.Teleport:AddRightGroupbox('스폰포인트')
 
