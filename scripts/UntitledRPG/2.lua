@@ -1,3 +1,4 @@
+-- 이 스크립트 개발에 큰 도움을 주신 누크 (nuguseyo_12)님께 감사를 드립니다
 if not game:IsLoaded() then
     game.Loaded:Wait()
 end
@@ -1013,56 +1014,73 @@ SkinChangerGroup:AddButton({
 loadSavedDisguises()
 refreshDisguiseButtons()
 
--- [[ 💾 위치 저장 및 자동 복귀 (캐릭터 체인저 밑에 추가됨) ]]
-local SavePosGroup = Tabs.Main:AddRightGroupbox('위치 저장') -- Main 탭 오른쪽에 추가
+-- [[ 💾 위치 저장 및 자동 복귀 (양방향 동기화 버전) ]]
+local SavePosGroup = Tabs.Main:AddRightGroupbox('위치 저장')
 
-local SavedPosition = nil -- 저장된 위치
-local AutoTpOnDeath = false -- 토글 상태
+local SavedPosition = nil -- 저장된 CFrame
+local AutoTpOnDeath = false
+local PosInputObject = nil -- 텍스트 박스 객체를 담을 변수
 
--- 1. [버튼] 현재 위치 저장
+-- 1. [입력창] 좌표 직접 수정 & 표시
+-- (버튼보다 먼저 정의하거나, 변수에 담아둬야 버튼에서 제어 가능)
+PosInputObject = SavePosGroup:AddInput('ManualPosInput', {
+    Default = '',
+    Text = '저장된 좌표',
+    Placeholder = '예: 100, 50, -200',
+    Callback = function(Value)
+        -- 사용자가 키보드로 입력했을 때 작동
+        local x, y, z = Value:match("([^,]+)%s*,%s*([^,]+)%s*,%s*([^,]+)")
+        if x and y and z then
+            SavedPosition = CFrame.new(tonumber(x), tonumber(y), tonumber(z))
+            -- (선택사항) 입력 후 알림이 너무 자주 뜨면 귀찮으니 로그만 남김
+            print("좌표 수동 업데이트됨:", x, y, z)
+        end
+    end
+})
+
+-- 2. [버튼] 현재 위치 저장 (누르면 위의 입력창 값이 바뀜)
 SavePosGroup:AddButton({
-    Text = '현재 위치 저장',
+    Text = '현재 위치 가져오기',
     Func = function()
         local p = game.Players.LocalPlayer
         if p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            -- 1. 현재 위치 저장
             SavedPosition = p.Character.HumanoidRootPart.CFrame
+            local pos = SavedPosition.Position
             
-            -- 알림 메시지
-            game.StarterGui:SetCore("SendNotification", {
-                Title = "위치 저장 완료",
-                Text = "현재 위치가 저장되었습니다.",
-                Duration = 2
-            })
+            -- 2. 좌표를 보기 좋게 문자열로 변환 (소수점 1자리까지)
+            local posString = string.format("%.1f, %.1f, %.1f", pos.X, pos.Y, pos.Z)
+            
+            -- 3. [핵심] 텍스트 박스의 값을 강제로 변경!
+            if PosInputObject then
+                PosInputObject:SetValue(posString)
+            end
+            
+            Library:Notify("현재 위치를 가져왔습니다.")
         else
-            game.StarterGui:SetCore("SendNotification", {
-                Title = "오류",
-                Text = "캐릭터 위치를 찾을 수 없습니다.",
-                Duration = 2
-            })
+            Library:Notify("캐릭터를 찾을 수 없습니다.")
         end
     end,
-    Tooltip = '현재 서 있는 위치를 기억합니다.'
+    Tooltip = '현재 내 위치를 가져와서 입력칸에 채워넣습니다.'
 })
 
--- 2. [토글] 죽으면 자동 복귀
+-- 3. [토글] 죽으면 자동 복귀
 SavePosGroup:AddToggle('AutoTpToggle', {
     Text = '죽으면 자동 복귀',
     Default = false,
-    Tooltip = '켜두면 리스폰 될 때마다 저장된 위치로 이동합니다.',
+    Tooltip = '켜두면 리스폰 시 위 좌표로 이동합니다.',
     Callback = function(Value)
         AutoTpOnDeath = Value
     end
 })
 
--- 3. [로직] 리스폰 감지 및 이동
+-- 4. 자동 복귀 로직
 game.Players.LocalPlayer.CharacterAdded:Connect(function(newChar)
     if AutoTpOnDeath and SavedPosition then
-        -- 캐릭터 로딩 대기 (1초)
-        task.wait(1)
-        
+        task.wait(1.2) -- 로딩 대기
         local hrp = newChar:WaitForChild("HumanoidRootPart", 10)
         if hrp then
-            hrp.CFrame = SavedPosition -- 저장된 위치로 텔레포트
+            hrp.CFrame = SavedPosition
         end
     end
 end)
@@ -1625,11 +1643,24 @@ LunaVillageGroup:AddButton({
 local TeleportGroup = Tabs.Teleport:AddLeftGroupbox('텔레포트 위치')
 TeleportGroup:AddButton({ Text = '1세계 포탈', Func = function() teleportTo("1세계 포탈") end })
 
--- [[ 기타 기능 (Misc 탭) ]]
+-- [[ 매크로 방지 우회 (토글형으로 변경됨) ]]
 local MacroGroup = Tabs.Misc:AddLeftGroupbox('매크로 방지 우회')
-MacroGroup:AddButton({
-    Text = '매크로 방지 우회',
-    Func = antiMacro
+
+local AntiMacroEnabled = false -- 토글 상태를 저장할 변수
+
+-- 1. 토글 버튼 생성
+MacroGroup:AddToggle('AntiMacroToggle', {
+    Text = '매크로 방지 자동 우회',
+    Default = false,
+    Tooltip = '켜두면 숫자를 입력하라는 창이 뜰 때 자동으로 입력합니다.',
+    Callback = function(Value)
+        AntiMacroEnabled = Value
+        if Value then
+            print("매크로 방지 감시 시작")
+        else
+            print("매크로 방지 감시 종료")
+        end
+    end
 })
 
 local ScriptGroup = Tabs.Misc:AddRightGroupbox('스크립트')
