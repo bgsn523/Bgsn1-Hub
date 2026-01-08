@@ -305,37 +305,6 @@ local function startAutoFarm()
     end)
 end
 
--- [[ 매크로 방지 우회 함수 (Anti-Macro) ]]
--- 화면에 뜨는 "다음 숫자를 입력해주세요" GUI를 찾아 자동으로 입력하여 우회
-local function antiMacro()
-    spawn(function()
-        while true do
-            pcall(function()
-                local gui = game.Players.LocalPlayer.PlayerGui:FindFirstChild("MacroGui")
-                if not gui then return end
-
-                local frame1 = gui:FindFirstChild("Frame")
-                if not frame1 then return end
-
-                local frame2 = frame1:FindFirstChild("Frame")
-                if not frame2 then return end
-
-                local input = frame2:FindFirstChild("Input")
-                local textBox = frame2:FindFirstChild("TextBox")
-                if not (input and textBox and input:IsA("TextLabel") and textBox:IsA("TextBox")) then
-                    return
-                end
-
-                -- 질문 텍스트에서 숫자만 추출하여 입력창에 대입
-                local text = input.Text or ""
-                local cleanText = string.gsub(text, "다음 숫자를 입력해주세요: ", "")
-                textBox.Text = cleanText
-            end)
-            wait(5)
-        end
-    end)
-end
-
 -- [[ ESP 관련 변수 및 함수 ]]
 local MobESPEnabled = false
 local PlayerESPEnabled = false
@@ -1664,10 +1633,10 @@ TeleportGroup:AddButton({ Text = '무사관', Func = function() teleportTo("무�
 TeleportGroup:AddButton({ Text = '메이플 월드', Func = function() teleportTo("메이플 월드") end })
 TeleportGroup:AddButton({ Text = '고대사막', Func = function() teleportTo("고대사막") end })
 
--- [[ 매크로 방지 우회 (토글형으로 변경됨) ]]
+-- [[ 매크로 방지 우회 (토글형 + 자동 감지 시스템) ]]
 local MacroGroup = Tabs.Misc:AddLeftGroupbox('매크로 방지 우회')
 
-local AntiMacroEnabled = false -- 토글 상태를 저장할 변수
+local AntiMacroEnabled = false -- 토글 상태 저장 변수
 
 -- 1. 토글 버튼 생성
 MacroGroup:AddToggle('AntiMacroToggle', {
@@ -1677,12 +1646,51 @@ MacroGroup:AddToggle('AntiMacroToggle', {
     Callback = function(Value)
         AntiMacroEnabled = Value
         if Value then
-            print("매크로 방지 감시 시작")
+            print("매크로 방지 감시가 시작되었습니다.")
+            Library:Notify("매크로 방지 감시 시작")
         else
-            print("매크로 방지 감시 종료")
+            print("매크로 방지 감시가 종료되었습니다.")
+            Library:Notify("매크로 방지 감시 종료")
         end
     end
 })
+
+-- 2. 감시 및 자동 입력 로직 (백그라운드에서 항상 대기)
+task.spawn(function()
+    while true do
+        task.wait(1) -- 1초마다 매크로 창이 떴는지 검사 (너무 빠르면 렉 유발)
+        
+        if AntiMacroEnabled then
+            print("매크로 방지 감시중")
+            pcall(function()
+                local player = game.Players.LocalPlayer
+                if not player then return end
+                
+                -- 매크로 GUI 찾기 (경로: PlayerGui -> MacroGui -> Frame -> Frame)
+                local gui = player.PlayerGui:FindFirstChild("MacroGui")
+                if gui and gui:FindFirstChild("Frame") then
+                    local mainFrame = gui.Frame:FindFirstChild("Frame")
+                    
+                    if mainFrame then
+                        local inputLabel = mainFrame:FindFirstChild("Input")
+                        local inputTextBox = mainFrame:FindFirstChild("TextBox")
+                        
+                        if inputLabel and inputTextBox then
+                            -- [핵심] 텍스트에서 "숫자"만 쏙 뽑아내기 (예: "다음 숫자... 1234" -> "1234")
+                            local targetNum = inputLabel.Text:match("%d+")
+                            
+                            -- 숫자가 있고, 입력창이 비어있거나 다르면 입력
+                            if targetNum and inputTextBox.Text ~= targetNum then
+                                inputTextBox.Text = targetNum
+                                print("매크로 숫자 감지 및 입력됨: " .. targetNum)
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    end
+end)
 
 local ScriptGroup = Tabs.Misc:AddRightGroupbox('스크립트')
 -- Infinite Yield 실행 (유명한 관리자 명령어 스크립트)
