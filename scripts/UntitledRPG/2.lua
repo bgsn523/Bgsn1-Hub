@@ -49,6 +49,7 @@ local MobList, MobMap = {}, {}
 local AutoFarmConnection = nil
 local lastAttackTime = 0
 local lastSkillTime = 0
+local LastSpawnTime = 0 -- 마지막 리스폰 시간 기록용 변수
 local NoClipConnection = nil
 local MobDropdownObject = nil
 
@@ -77,6 +78,11 @@ if CharacterSettings.AntiAFKEnabled then
         end
     end)
 end
+
+-- 캐릭터가 새로 생길 때마다 시간 기록
+Players.LocalPlayer.CharacterAdded:Connect(function()
+    LastSpawnTime = tick()
+end)
 
 -- 캐릭터 객체 가져오기 (없으면 대기)
 local function getCharacter()
@@ -207,7 +213,7 @@ local function toggleNoClip(enabled)
     end
 end
 
--- [[ 오토팜 시작 함수 (수정됨: 타겟 없을 시 공중 대기) ]]
+-- [[ 오토팜 시작 함수 (수정됨: 리스폰 충돌 방지 적용) ]]
 local function startAutoFarm()
     -- 기존 연결 해제
     if AutoFarmConnection then 
@@ -215,10 +221,16 @@ local function startAutoFarm()
         AutoFarmConnection = nil
     end
 
-    -- [추가] 대기 위치를 저장할 변수
-    local waitCFrame = nil 
+    local waitCFrame = nil -- 대기 위치 저장 변수
 
     AutoFarmConnection = RunService.Heartbeat:Connect(function()
+        -- [[ 🛑 핵심 수정 1: 리스폰 직후 3초간 오토팜 로직 일시 정지 ]]
+        -- (자동 복귀 기능이 먼저 작동할 시간을 벌어줍니다)
+        if tick() - LastSpawnTime < 3 then 
+            waitCFrame = nil -- 대기 위치 초기화
+            return 
+        end
+
         local character = LocalPlayer.Character
         if not character then return end
 
@@ -226,10 +238,10 @@ local function startAutoFarm()
         local hrp = character:FindFirstChild("HumanoidRootPart")
         if not humanoid or not hrp then return end
 
-        -- 체력 없으면 타겟 초기화
+        -- 체력 없으면 타겟 및 대기위치 초기화
         if humanoid.Health <= 0 then
             AutoFarmConfig.CurrentTarget = nil
-            waitCFrame = nil -- 죽으면 대기 위치도 초기화
+            waitCFrame = nil 
             return
         end
 
@@ -245,54 +257,46 @@ local function startAutoFarm()
             AutoFarmConfig.CurrentTarget = nil
         end
         
-        -- 타겟이 없으면 새로 찾기 시도
         if not AutoFarmConfig.CurrentTarget then
             AutoFarmConfig.CurrentTarget = findTargetMob()
         end
 
         local currentTarget = AutoFarmConfig.CurrentTarget
 
-        -- [[ 🛑 핵심 수정 구간: 타겟이 없을 때 대기 로직 ]] 
+        -- [[ 타겟이 없을 때 대기 로직 ]] 
         if not currentTarget then
-            -- 물리력 초기화 (낙하 방지)
             hrp.Velocity = Vector3.new(0, 0, 0)
             
             if not waitCFrame then
-                -- 아직 대기 위치가 잡히지 않았다면? 
-                -- 현재 위치에서 Y축으로 10만큼 위로 잡음 (높이 조절 가능)
+                -- 현재 위치에서 위로 10만큼 설정
                 waitCFrame = hrp.CFrame * CFrame.new(0, 10, 0)
             end
             
-            -- 캐릭터를 대기 위치에 고정
             hrp.CFrame = waitCFrame 
             return
         else
-            -- 타겟을 찾았다면 대기 위치 변수 초기화 (다음 번을 위해)
             waitCFrame = nil
         end
-        -- [[ 🛑 수정 구간 끝 ]]
 
+        -- 타겟이 있을 때 이동 로직
         local targetRootPart = currentTarget:FindFirstChild("HumanoidRootPart") or currentTarget:FindChild("HRP")
         if not targetRootPart then
             AutoFarmConfig.CurrentTarget = nil
             return
         end
 
-        -- [이동 로직] 타겟 위치 계산
         local targetPos = Vector3.new(
             targetRootPart.Position.X,
             targetRootPart.Position.Y + AutoFarmConfig.HeightOffset,
             targetRootPart.Position.Z
         )
 
-        -- [이동 로직] 최종 위치 및 방향 계산
         local finalCFrame = calculatePerfectCFrame(targetPos, AutoFarmConfig.Distance, AttackDirection)
         hrp.CFrame = finalCFrame
 
-        -- 네트워크 권한 설정
         pcall(function() hrp:SetNetworkOwner(LocalPlayer) end)
 
-        -- [공격 로직]
+        -- 공격 로직
         local currentTime = tick()
         if currentTime - lastAttackTime >= 0.08 then
             if AutoFarmConfig.AutoClickEnabled then
@@ -301,7 +305,7 @@ local function startAutoFarm()
             lastAttackTime = currentTime
         end
 
-        -- [스킬 로직]
+        -- 스킬 로직
         if AutoFarmConfig.AutoSkillEnabled then
             if currentTime - lastSkillTime >= 2 then
                 if AutoFarmConfig.Skills.E then fireSkill("E") end
@@ -576,6 +580,137 @@ AutoFarmGroup:AddDropdown('AttackDirectionDropdown', {
         AttackDirection = Value
     end
 })
+
+-- [[ 💊 아이템 자동 사용 (퀵바 1~3번) ]] --
+local ItemGroup = Tabs.Main:AddLeftGroupbox('아이템 자동 사용')
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
+-- 아이템 설정 저장 변수
+local AutoItemConfig = {
+    Slot1 = { Enabled = false, Delay = 1 },
+    Slot2 = { Enabled = false, Delay = 1 },
+    Slot3 = { Enabled = false, Delay = 1 }
+}
+
+-- [함수] 키보드 누름 시뮬레이션
+local function simulateKeyPress(keyCode)
+    pcall(function()
+        VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
+        task.wait(0.05) -- 살짝 눌렀다 떼는 느낌
+        VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
+    end)
+end
+
+-- ==============================
+-- [1번 퀵바 설정]
+-- ==============================
+ItemGroup:AddToggle('AutoItem1_Toggle', {
+    Text = '1번 퀵바 자동 사용',
+    Default = false,
+    Tooltip = '키보드 숫자 1번을 자동으로 누릅니다.',
+    Callback = function(Value)
+        AutoItemConfig.Slot1.Enabled = Value
+    end
+})
+
+ItemGroup:AddSlider('AutoItem1_Delay', {
+    Text = '1번 사용 딜레이 (초)',
+    Default = 5,
+    Min = 0,
+    Max = 30,
+    Rounding = 1, -- 0.1 단위 조절
+    Callback = function(Value)
+        AutoItemConfig.Slot1.Delay = Value
+    end
+})
+
+-- 1번 슬롯 작동 루프
+task.spawn(function()
+    while true do
+        if AutoItemConfig.Slot1.Enabled then
+            simulateKeyPress(Enum.KeyCode.One) -- 숫자 1 입력
+            -- 딜레이만큼 대기 (최소 0.1초 안전장치)
+            local waitTime = math.max(0.1, AutoItemConfig.Slot1.Delay)
+            task.wait(waitTime)
+        else
+            task.wait(1) -- 꺼져있을 땐 1초 대기
+        end
+    end
+end)
+
+
+-- ==============================
+-- [2번 퀵바 설정]
+-- ==============================
+ItemGroup:AddToggle('AutoItem2_Toggle', {
+    Text = '2번 퀵바 자동 사용',
+    Default = false,
+    Tooltip = '키보드 숫자 2번을 자동으로 누릅니다.',
+    Callback = function(Value)
+        AutoItemConfig.Slot2.Enabled = Value
+    end
+})
+
+ItemGroup:AddSlider('AutoItem2_Delay', {
+    Text = '2번 사용 딜레이 (초)',
+    Default = 5,
+    Min = 0,
+    Max = 30,
+    Rounding = 1,
+    Callback = function(Value)
+        AutoItemConfig.Slot2.Delay = Value
+    end
+})
+
+-- 2번 슬롯 작동 루프
+task.spawn(function()
+    while true do
+        if AutoItemConfig.Slot2.Enabled then
+            simulateKeyPress(Enum.KeyCode.Two) -- 숫자 2 입력
+            local waitTime = math.max(0.1, AutoItemConfig.Slot2.Delay)
+            task.wait(waitTime)
+        else
+            task.wait(1)
+        end
+    end
+end)
+
+
+-- ==============================
+-- [3번 퀵바 설정]
+-- ==============================
+ItemGroup:AddToggle('AutoItem3_Toggle', {
+    Text = '3번 퀵바 자동 사용',
+    Default = false,
+    Tooltip = '키보드 숫자 3번을 자동으로 누릅니다.',
+    Callback = function(Value)
+        AutoItemConfig.Slot3.Enabled = Value
+    end
+})
+
+ItemGroup:AddSlider('AutoItem3_Delay', {
+    Text = '3번 사용 딜레이 (초)',
+    Default = 5,
+    Min = 0,
+    Max = 30,
+    Rounding = 1,
+    Callback = function(Value)
+        AutoItemConfig.Slot3.Delay = Value
+    end
+})
+
+-- 3번 슬롯 작동 루프
+task.spawn(function()
+    while true do
+        if AutoItemConfig.Slot3.Enabled then
+            simulateKeyPress(Enum.KeyCode.Three) -- 숫자 3 입력
+            local waitTime = math.max(0.1, AutoItemConfig.Slot3.Delay)
+            task.wait(waitTime)
+        else
+            task.wait(1)
+        end
+    end
+end)
 
 -- [[ 타이머 그룹박스 (Main 탭 우측) ]]
 local SpawnerMobGroup = Tabs.Main:AddRightGroupbox('타이머')
