@@ -148,16 +148,16 @@ end
 -- 초기 몹 리스트 로드
 MobList, MobMap = getMobList()
 
--- [[ 몹 사망 여부 확인 함수 ]]
--- 몹이 Workspace에서 사라지거나 투명해지면 죽은 것으로 간주
+-- [[ 몹 사망 여부 확인 ]]
 local function isMobDead(mob)
     if not (mob and mob.Parent) then return true end
-    if mob:FindFirstChild("HumanoidRootPart") then return false end
-    for _, child in pairs(mob:GetChildren()) do
-        if child:IsA("BasePart") and child.Transparency >= 0.01 then
-            return true
-        end
-    end
+    
+    local humanoid = mob:FindFirstChildOfClass("Humanoid")
+    local rootPart = mob:FindFirstChild("HumanoidRootPart") or mob:FindFirstChild("HRP")
+
+    if not rootPart then return true end 
+    if humanoid and humanoid.Health <= 0 then return true end 
+
     return false
 end
 
@@ -1646,10 +1646,8 @@ MacroGroup:AddToggle('AntiMacroToggle', {
     Callback = function(Value)
         AntiMacroEnabled = Value
         if Value then
-            print("매크로 방지 감시가 시작되었습니다.")
             Library:Notify("매크로 방지 감시 시작")
         else
-            print("매크로 방지 감시가 종료되었습니다.")
             Library:Notify("매크로 방지 감시 종료")
         end
     end
@@ -1661,7 +1659,6 @@ task.spawn(function()
         task.wait(1) -- 1초마다 매크로 창이 떴는지 검사 (너무 빠르면 렉 유발)
         
         if AntiMacroEnabled then
-            print("매크로 방지 감시중")
             pcall(function()
                 local player = game.Players.LocalPlayer
                 if not player then return end
@@ -1682,7 +1679,6 @@ task.spawn(function()
                             -- 숫자가 있고, 입력창이 비어있거나 다르면 입력
                             if targetNum and inputTextBox.Text ~= targetNum then
                                 inputTextBox.Text = targetNum
-                                print("매크로 숫자 감지 및 입력됨: " .. targetNum)
                             end
                         end
                     end
