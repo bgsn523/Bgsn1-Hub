@@ -11,6 +11,8 @@ local function SendAlert(title, text)
     })
 end
 
+SendAlert("Notice","만약 실행에 문제가 있다면 실행기를 바꾸세요!")
+
 -- [[ 기기 감지 로직 ]] --
 local IsMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 
