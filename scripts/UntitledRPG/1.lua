@@ -115,6 +115,23 @@ local function fireSkill(skillKey)
     end)
 end
 
+-- [[ 노클립(NoClip) 함수 ]]
+local function toggleNoClip(enabled)
+    if NoClipConnection then NoClipConnection:Disconnect() end
+    if enabled then
+        NoClipConnection = RunService.Stepped:Connect(function()
+            local character = LocalPlayer.Character
+            if character then
+                for _, part in pairs(character:GetDescendants()) do
+                    if part:IsA("BasePart") and part.CanCollide then
+                        part.CanCollide = false
+                    end
+                end
+            end
+        end)
+    end
+end
+
 -- [[ 수정된 몹 리스트 갱신 함수 (단순화 버전) ]]
 -- 까다로운 체력바 UI 검사를 제거하고, 살아있는지만 확인합니다.
 local function getMobList()
@@ -587,6 +604,137 @@ AutoFarmGroup:AddDropdown('AttackDirectionDropdown', {
         AttackDirection = Value
     end
 })
+
+-- [[ 💊 아이템 자동 사용 (퀵바 1~3번) ]] --
+local ItemGroup = Tabs.Main:AddLeftGroupbox('아이템 자동 사용')
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
+-- 아이템 설정 저장 변수
+local AutoItemConfig = {
+    Slot1 = { Enabled = false, Delay = 1 },
+    Slot2 = { Enabled = false, Delay = 1 },
+    Slot3 = { Enabled = false, Delay = 1 }
+}
+
+-- [함수] 키보드 누름 시뮬레이션
+local function simulateKeyPress(keyCode)
+    pcall(function()
+        VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
+        task.wait(0.05) -- 살짝 눌렀다 떼는 느낌
+        VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
+    end)
+end
+
+-- ==============================
+-- [1번 퀵바 설정]
+-- ==============================
+ItemGroup:AddToggle('AutoItem1_Toggle', {
+    Text = '1번 퀵바 자동 사용',
+    Default = false,
+    Tooltip = '키보드 숫자 1번을 자동으로 누릅니다.',
+    Callback = function(Value)
+        AutoItemConfig.Slot1.Enabled = Value
+    end
+})
+
+ItemGroup:AddSlider('AutoItem1_Delay', {
+    Text = '1번 사용 딜레이 (초)',
+    Default = 5,
+    Min = 0,
+    Max = 30,
+    Rounding = 1, -- 0.1 단위 조절
+    Callback = function(Value)
+        AutoItemConfig.Slot1.Delay = Value
+    end
+})
+
+-- 1번 슬롯 작동 루프
+task.spawn(function()
+    while true do
+        if AutoItemConfig.Slot1.Enabled then
+            simulateKeyPress(Enum.KeyCode.One) -- 숫자 1 입력
+            -- 딜레이만큼 대기 (최소 0.1초 안전장치)
+            local waitTime = math.max(0.1, AutoItemConfig.Slot1.Delay)
+            task.wait(waitTime)
+        else
+            task.wait(1) -- 꺼져있을 땐 1초 대기
+        end
+    end
+end)
+
+
+-- ==============================
+-- [2번 퀵바 설정]
+-- ==============================
+ItemGroup:AddToggle('AutoItem2_Toggle', {
+    Text = '2번 퀵바 자동 사용',
+    Default = false,
+    Tooltip = '키보드 숫자 2번을 자동으로 누릅니다.',
+    Callback = function(Value)
+        AutoItemConfig.Slot2.Enabled = Value
+    end
+})
+
+ItemGroup:AddSlider('AutoItem2_Delay', {
+    Text = '2번 사용 딜레이 (초)',
+    Default = 5,
+    Min = 0,
+    Max = 30,
+    Rounding = 1,
+    Callback = function(Value)
+        AutoItemConfig.Slot2.Delay = Value
+    end
+})
+
+-- 2번 슬롯 작동 루프
+task.spawn(function()
+    while true do
+        if AutoItemConfig.Slot2.Enabled then
+            simulateKeyPress(Enum.KeyCode.Two) -- 숫자 2 입력
+            local waitTime = math.max(0.1, AutoItemConfig.Slot2.Delay)
+            task.wait(waitTime)
+        else
+            task.wait(1)
+        end
+    end
+end)
+
+
+-- ==============================
+-- [3번 퀵바 설정]
+-- ==============================
+ItemGroup:AddToggle('AutoItem3_Toggle', {
+    Text = '3번 퀵바 자동 사용',
+    Default = false,
+    Tooltip = '키보드 숫자 3번을 자동으로 누릅니다.',
+    Callback = function(Value)
+        AutoItemConfig.Slot3.Enabled = Value
+    end
+})
+
+ItemGroup:AddSlider('AutoItem3_Delay', {
+    Text = '3번 사용 딜레이 (초)',
+    Default = 5,
+    Min = 0,
+    Max = 30,
+    Rounding = 1,
+    Callback = function(Value)
+        AutoItemConfig.Slot3.Delay = Value
+    end
+})
+
+-- 3번 슬롯 작동 루프
+task.spawn(function()
+    while true do
+        if AutoItemConfig.Slot3.Enabled then
+            simulateKeyPress(Enum.KeyCode.Three) -- 숫자 3 입력
+            local waitTime = math.max(0.1, AutoItemConfig.Slot3.Delay)
+            task.wait(waitTime)
+        else
+            task.wait(1)
+        end
+    end
+end)
 
 -- [[ 타이머 그룹박스 (Main 탭 우측) ]]
 local SpawnerMobGroup = Tabs.Main:AddRightGroupbox('타이머')
