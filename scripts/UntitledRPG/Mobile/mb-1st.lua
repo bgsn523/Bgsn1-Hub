@@ -693,6 +693,366 @@ end)
 
 
 
+-- [[ 🗺️ 지역 이동 탭 ]] --
+local LocationTab = Window:CreateTab("지역 이동", 4483362458) -- 아이콘 ID (적절히 변경 가능)
+local TpSection = LocationTab:CreateSection("주요 지역")
+
+-- [[ 텔레포트 위치 데이터 ]]
+local TeleportLocations = {
+    ["스폰"] = CFrame.new(-152.783508, 139.910004, 1791.16602, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+    ["이름 몰?루"] = CFrame.new(-5.18880367, 140.157761, 2492.52466, -0.91892904, 0.0095216129, -0.394307911, -0.0174374916, 0.997750401, 0.0647310913, 0.394037217, 0.0663590208, -0.916695774),
+    ["피라미드"] = CFrame.new(-294.798401, 245, 4799.24561, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+    ["무사관"] = CFrame.new(-1433.65576, 192.344635, 3796.99072, 0.712066472, 0.0192845948, 0.701847136, 3.82279977e-05, 0.99962163, -0.0275053065, -0.702112019, 0.0196124371, 0.711796343),
+    ["메이플 월드"] = CFrame.new(-682.302002, 150.36142, 3476.62207, -0.758712471, 0.0163987316, 0.651219189, 4.14453643e-05, 0.999684334, -0.0251253452, -0.65142566, -0.0190359224, -0.758473635),
+    ["고대사막"] = CFrame.new(-295.476227, 129.719971, 3825.25537, -0.705779552, -4.20836095e-08, -0.708431542, -2.02547241e-08, 1, -3.92250215e-08, 0.708431542, -1.33351339e-08, -0.705779552)
+}
+
+-- 드롭다운에 넣을 이름 목록 추출 및 정렬
+local LocationNames = {}
+for name, _ in pairs(TeleportLocations) do
+    table.insert(LocationNames, name)
+end
+table.sort(LocationNames) -- 가나다순 정렬
+
+local SelectedTpLocation = LocationNames[1] -- 기본 선택값
+
+-- [[ UI 구성 ]]
+
+-- 1. 장소 선택 드롭다운
+LocationTab:CreateDropdown({
+    Name = "이동할 장소 선택",
+    Options = LocationNames,
+    CurrentOption = SelectedTpLocation,
+    MultipleOptions = false,
+    Flag = "TpLocationDropdown",
+    Callback = function(Option)
+        -- Rayfield 버전에 따라 Option이 table 혹은 string일 수 있음
+        local val = (type(Option) == "table" and Option[1]) or Option
+        SelectedTpLocation = val
+    end,
+})
+
+-- 2. 이동 버튼
+LocationTab:CreateButton({
+    Name = "선택한 장소로 이동하기",
+    Callback = function()
+        local destinationCFrame = TeleportLocations[SelectedTpLocation]
+        
+        if destinationCFrame then
+            local character = game:GetService("Players").LocalPlayer.Character
+            if character and character:FindFirstChild("HumanoidRootPart") then
+                character.HumanoidRootPart.CFrame = destinationCFrame
+                
+                Rayfield:Notify({
+                    Title = "이동 완료",
+                    Content = SelectedTpLocation .. "(으)로 순간이동했습니다.",
+                    Duration = 3,
+                    Image = 4483362458,
+                })
+            else
+                Rayfield:Notify({
+                    Title = "오류",
+                    Content = "캐릭터를 찾을 수 없습니다.",
+                    Duration = 3,
+                    Image = 4483362458,
+                })
+            end
+        else
+            Rayfield:Notify({
+                Title = "오류",
+                Content = "유효하지 않은 위치입니다.",
+                Duration = 3,
+                Image = 4483362458,
+            })
+        end
+    end,
+})
+
+
+-- [[ 💾 스폰 포인트 등록 섹션 ]] --
+-- 위에서 만든 LocationTab에 이어서 추가됩니다.
+
+LocationTab:CreateSection("스폰 포인트 등록")
+
+-- [헬퍼 함수] 텔레포트 후 ProximityPrompt 상호작용 로직
+local function interactWithPrompt(targetCFrame, promptPathFunc, returnToOriginal)
+    local player = game:GetService("Players").LocalPlayer
+    local character = player.Character or player.CharacterAdded:Wait()
+    local root = character:WaitForChild("HumanoidRootPart")
+    
+    local originalCFrame = root.CFrame
+
+    -- 1. 목표 위치로 이동
+    root.CFrame = targetCFrame
+    task.wait(0.5)
+
+    -- 2. 프롬프트 찾기
+    local prompt
+    pcall(function()
+        prompt = promptPathFunc()
+    end)
+
+    -- 3. 프롬프트 실행
+    if prompt then
+        local oldDuration = prompt.HoldDuration
+        prompt.HoldDuration = 0 -- 즉시 발동되게 0초로 변경
+        fireproximityprompt(prompt)
+        task.wait(0.05)
+        prompt.HoldDuration = oldDuration -- 원래 시간 복구
+        
+        Rayfield:Notify({
+            Title = "성공",
+            Content = "스폰 포인트가 등록되었습니다.",
+            Duration = 2,
+            Image = 4483362458,
+        })
+    else
+        Rayfield:Notify({
+            Title = "오류",
+            Content = "상호작용할 대상을 찾지 못했습니다.",
+            Duration = 3,
+            Image = 4483362458,
+        })
+    end
+
+    -- 4. 원래 위치로 복귀 (옵션)
+    if returnToOriginal then
+        root.CFrame = originalCFrame
+    end
+end
+
+-- 1. 루나마을 스폰
+LocationTab:CreateButton({
+    Name = "루나마을 스폰 등록",
+    Callback = function()
+        interactWithPrompt(
+            CFrame.new(-50.4700165, 136.039993, 1992.54004, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+            function() return workspace.SpawnPoint["루나마을 스폰"].SpawnPart:FindFirstChildOfClass("ProximityPrompt") end,
+            true -- 원래 위치로 복귀함
+        )
+    end,
+})
+
+-- 2. 겨울성 스폰
+LocationTab:CreateButton({
+    Name = "겨울성 스폰 등록",
+    Callback = function()
+        interactWithPrompt(
+            CFrame.new(2177.99341, 378.901886, 4562.57129, 0.399358451, 0, 0.916794896, 0, 1, 0, -0.916794896, 0, 0.399358451),
+            function() return workspace.SpawnPoint["겨울성 스폰"].SpawnPart:FindFirstChildOfClass("ProximityPrompt") end,
+            true
+        )
+    end,
+})
+
+-- 3. 겨울 스폰
+LocationTab:CreateButton({
+    Name = "겨울 스폰 등록",
+    Callback = function()
+        interactWithPrompt(
+            CFrame.new(331.624847, 192.511246, 3749.88232, 1, 0, 0, 0, 1, 0, 0, 0, 1),
+            function() return workspace.SpawnPoint["겨울 스폰"].SpawnPart:FindFirstChildOfClass("ProximityPrompt") end,
+            true
+        )
+    end,
+})
+
+-- 4. 메이플 스폰
+LocationTab:CreateButton({
+    Name = "메이플 스폰 등록",
+    Callback = function()
+        interactWithPrompt(
+            CFrame.new(-1433.6543, 199.052856, 3796.99219, -1, 0, 0, 0, 1, 0, 0, 0, -1),
+            function() return workspace.SpawnPoint["메이플 스폰"].SpawnPart:FindFirstChildOfClass("ProximityPrompt") end,
+            true
+        )
+    end,
+})
+
+
+-- [[ 🌍 세계 이동 섹션 (분리됨) ]] --
+LocationTab:CreateSection("세계 이동")
+
+-- 2세계 텔레포트
+LocationTab:CreateButton({
+    Name = "2세계 텔레포트",
+    Callback = function()
+        interactWithPrompt(
+            CFrame.new(
+                -36.1729698, 150.903793, -2374.63696,
+                4.59551811e-05, 1.87382102e-06, -0.99999994,
+                0.0814801306, -0.996674895, 1.87382102e-06,
+                -0.996674955, -0.0814801306, -4.58955765e-05
+            ),
+            function() return workspace.Map.Teleport["World2"]:FindFirstChildOfClass("ProximityPrompt") end,
+            false -- 2세계로 가는 것이므로 원래 위치로 돌아오지 않음
+        )
+    end,
+})
+
+-- [[ 🏃 캐릭터 조작 탭 (모바일 높낮이 조절 수정판) ]] --
+local CharacterTab = Window:CreateTab("캐릭터 조작", 4483362458)
+
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+-- 변수 설정
+local NoclipConnection = nil
+local FlyConnection = nil
+local FlySpeed = 20
+local BodyVel, BodyGyro = nil, nil
+
+-- [[ 섹션 1: 이동 속도 및 점프 ]]
+CharacterTab:CreateSection("이동 속도 및 점프")
+
+CharacterTab:CreateSlider({
+    Name = "이동 속도 (WalkSpeed)",
+    Range = {16, 300},
+    Increment = 1,
+    Suffix = "Speed",
+    CurrentValue = 16,
+    Flag = "WalkSpeedSlider",
+    Callback = function(Value)
+        local char = LocalPlayer.Character
+        local hum = char and char:FindFirstChild("Humanoid")
+        if hum then hum.WalkSpeed = Value end
+    end,
+})
+
+CharacterTab:CreateSlider({
+    Name = "점프력 (JumpPower)",
+    Range = {50, 500},
+    Increment = 1,
+    Suffix = "Power",
+    CurrentValue = 50,
+    Flag = "JumpPowerSlider",
+    Callback = function(Value)
+        local char = LocalPlayer.Character
+        local hum = char and char:FindFirstChild("Humanoid")
+        if hum then
+            hum.UseJumpPower = true 
+            hum.JumpPower = Value
+        end
+    end,
+})
+
+-- [[ 섹션 2: 유틸리티 ]]
+CharacterTab:CreateSection("유틸리티 (노클립/플라이)")
+
+CharacterTab:CreateToggle({
+    Name = "노클립 (벽 통과)",
+    CurrentValue = false,
+    Flag = "NoclipToggle",
+    Callback = function(Value)
+        if Value then
+            NoclipConnection = RunService.Stepped:Connect(function()
+                local char = LocalPlayer.Character
+                if char then
+                    for _, part in pairs(char:GetDescendants()) do
+                        if part:IsA("BasePart") and part.CanCollide == true then
+                            part.CanCollide = false
+                        end
+                    end
+                end
+            end)
+            Rayfield:Notify({Title = "노클립", Content = "활성화됨", Duration = 2})
+        else
+            if NoclipConnection then NoclipConnection:Disconnect() NoclipConnection = nil end
+            Rayfield:Notify({Title = "노클립", Content = "비활성화됨", Duration = 2})
+        end
+    end,
+})
+
+-- [[ 🚀 플라이 (모바일 높낮이 지원) ]]
+CharacterTab:CreateSlider({
+    Name = "플라이 속도",
+    Range = {1, 200},
+    Increment = 1,
+    Suffix = "Speed",
+    CurrentValue = 20,
+    Flag = "FlySpeedSlider",
+    Callback = function(Value)
+        FlySpeed = Value
+    end,
+})
+
+CharacterTab:CreateToggle({
+    Name = "플라이 (날기)",
+    CurrentValue = false,
+    Flag = "FlyToggle",
+    Callback = function(Value)
+        local char = LocalPlayer.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChild("Humanoid")
+
+        if Value then
+            if not root or not hum then return end
+
+            -- 물리 객체 생성
+            BodyVel = Instance.new("BodyVelocity")
+            BodyVel.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+            BodyVel.Parent = root
+
+            BodyGyro = Instance.new("BodyGyro")
+            BodyGyro.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
+            BodyGyro.P = 3000 -- 회전 반응 속도
+            BodyGyro.Parent = root
+
+            -- [[ 🔥 핵심 로직: 카메라 방향 따라가기 ]]
+            FlyConnection = RunService.RenderStepped:Connect(function()
+                if not root or not hum or hum.Health <= 0 then
+                    -- 캐릭터 사망/사라짐 체크
+                    if FlyConnection then FlyConnection:Disconnect() FlyConnection = nil end
+                    if BodyVel then BodyVel:Destroy() end
+                    if BodyGyro then BodyGyro:Destroy() end
+                    return
+                end
+
+                local cam = workspace.CurrentCamera
+                local moveDir = hum.MoveDirection -- 조이스틱/키보드 입력 (평면)
+                
+                -- 캐릭터 회전: 무조건 카메라를 바라보게 함
+                BodyGyro.CFrame = cam.CFrame
+
+                if moveDir.Magnitude > 0 then
+                    -- 입력 값을 카메라 기준(3D)으로 변환
+                    -- 1. 카메라의 '평면' 앞방향을 구함 (Y축 제거)
+                    local camLookFlat = (cam.CFrame.LookVector * Vector3.new(1,0,1)).Unit
+                    local camRightFlat = (cam.CFrame.RightVector * Vector3.new(1,0,1)).Unit
+                    
+                    -- 예외처리 (바닥/하늘을 수직으로 볼 때 Unit 계산 오류 방지)
+                    if camLookFlat.Magnitude == 0 then camLookFlat = cam.CFrame.LookVector end
+                    if camRightFlat.Magnitude == 0 then camRightFlat = cam.CFrame.RightVector end
+
+                    -- 2. 내 입력(moveDir)이 앞뒤인지 좌우인지 비율 계산 (Dot Product)
+                    local forwardFactor = moveDir:Dot(camLookFlat)
+                    local rightFactor = moveDir:Dot(camRightFlat)
+
+                    -- 3. 실제 이동 벡터: 카메라의 '진짜' 앞방향(3D)과 옆방향을 섞음
+                    -- (이렇게 하면 위를 보고 앞을 누르면 위로 감)
+                    local finalDir = (cam.CFrame.LookVector * forwardFactor) + (cam.CFrame.RightVector * rightFactor)
+                    
+                    BodyVel.Velocity = finalDir * FlySpeed
+                else
+                    BodyVel.Velocity = Vector3.new(0, 0, 0)
+                end
+            end)
+            
+            hum.PlatformStand = true -- 넘어짐 방지
+            Rayfield:Notify({Title = "플라이", Content = "활성화됨 (시점 방향으로 이동)", Duration = 2})
+
+        else
+            -- 끄기 로직
+            if FlyConnection then FlyConnection:Disconnect() FlyConnection = nil end
+            if BodyVel then BodyVel:Destroy() BodyVel = nil end
+            if BodyGyro then BodyGyro:Destroy() BodyGyro = nil end
+            
+            if hum then hum.PlatformStand = false end
+            Rayfield:Notify({Title = "플라이", Content = "비활성화됨", Duration = 2})
+        end
+    end,
+})
 
 Rayfield:Notify({
     Title = "스크립트 로드 완료",
