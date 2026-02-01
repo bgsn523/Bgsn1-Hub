@@ -979,7 +979,7 @@ local AntiMacroEnabled = false
 MacroGroup:AddToggle('AntiMacroToggle', {
     Text = '매크로 방지 자동 우회',
     Default = false,
-    Tooltip = '키패드 버튼이 랜덤하게 섞여도 Text로 정확히 찾아 입력합니다.',
+    Tooltip = '!!! 사용할때 쉬프트락을 꼭 끄시는걸 권장드립니다 !!!',
     Callback = function(Value)
         AntiMacroEnabled = Value
     end
