@@ -1142,7 +1142,7 @@ ConfigTab:CreateButton({
         AutoFarmConfig.Enabled = true
         AutoFarmConfig.AutoClickEnabled = true
         AutoFarmConfig.TargetMob = "나락화 수호자"
-        AutoFarmConfig.HeightOffset = 9
+        AutoFarmConfig.HeightOffset = 11
         AttackDirection = "Up"
         
         -- 드롭다운 UI 업데이트
