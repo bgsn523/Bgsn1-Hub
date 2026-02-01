@@ -56,6 +56,12 @@ local MobDropdownObject = nil
 -- [[ 텔레포트 위치 좌표 (2세계 전용) ]]
 local TeleportLocations = {
     ["1세계 포탈"] = CFrame.new(-1222.33264, 12.7694845, -274.283813, 0.945803106, 0, 0.324740738, 0, 1, 0, -0.324740738, 0, 0.945803106),
+    -- [[ 아틀란티스 추가 좌표 ]]
+    ["아틀란티스 입구"] = CFrame.new(1470.18262, 216.048325, -450.088928, 0.0460591614, 6.78605661e-09, -0.998938739, 2.01596588e-08, 1, 7.72278952e-09, 0.998938739, -2.04939692e-08, 0.0460591614),
+    ["아틀란티스"] = CFrame.new(1768.67529, -609.81366, -356.134705, -0.00645907642, 8.11567702e-08, -0.999979138, 6.11708506e-09, 1, 8.11189551e-08, 0.999979138, -5.59300384e-09, -0.00645907642),
+    ["아틀란티스 1관문"] = CFrame.new(2634.99854, -814.740723, -121.071808, -0.996026099, -2.47345838e-10, -0.089061521, -3.63378749e-09, 1, 3.78614828e-08, 0.089061521, 3.80346563e-08, -0.996026099),
+    ["아틀란티스 2관문"] = CFrame.new(633.42511, -771.123718, -589.995728, 0.995788872, -1.33637901e-08, 0.0916760415, 7.41205897e-09, 1, 6.52618013e-08, -0.0916760415, -6.43074713e-08, 0.995788872),
+    ["아틀란티스 3관문"] = CFrame.new(2239.94971, -800.142456, -1453.39636, 0.999859631, -0.00103080715, 0.0167244766, -8.06292988e-09, 0.998105943, 0.0615183823, -0.0167562142, -0.0615097471, 0.997965813 ),
 }
 
 -- [[ AFK 방지 로직 ]]
@@ -951,7 +957,7 @@ local AntiMacroEnabled = false
 MacroGroup:AddToggle('AntiMacroToggle', {
     Text = '매크로 방지 자동 우회',
     Default = false,
-    Tooltip = '키패드 버튼이 랜덤하게 섞여도 Text로 정확히 찾아 입력합니다.',
+    Tooltip = '!!! 사용할때 쉬프트락을 꼭 끄시는걸 권장드립니다 !!!',
     Callback = function(Value)
         AntiMacroEnabled = Value
     end
@@ -1682,6 +1688,12 @@ LunaVillageGroup:AddButton({
 -- [[ 텔레포트 버튼 (미리 정의된 좌표) ]]
 local TeleportGroup = Tabs.Teleport:AddLeftGroupbox('텔레포트 위치')
 TeleportGroup:AddButton({ Text = '1세계 포탈', Func = function() teleportTo("1세계 포탈") end })
+-- [[ 아틀란티스 버튼 추가 ]]
+TeleportGroup:AddButton({ Text = '아틀란티스 입구', Func = function() teleportTo("아틀란티스 입구") end })
+TeleportGroup:AddButton({ Text = '아틀란티스', Func = function() teleportTo("아틀란티스") end })
+TeleportGroup:AddButton({ Text = '아틀란티스 1관문', Func = function() teleportTo("아틀란티스 1관문") end })
+TeleportGroup:AddButton({ Text = '아틀란티스 2관문', Func = function() teleportTo("아틀란티스 2관문") end })
+TeleportGroup:AddButton({ Text = '아틀란티스 3관문', Func = function() teleportTo("아틀란티스 3관문") end })
 
 
 
