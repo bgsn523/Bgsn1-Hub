@@ -1121,6 +1121,119 @@ CharacterTab:CreateToggle({
     end,
 })
 
+-- [[ ⚙️ 콘픽(설정) 탭 ]] --
+local ConfigTab = Window:CreateTab("콘픽", 4483362458)
+local ConfigSection = ConfigTab:CreateSection("사냥터 프리셋")
+
+ConfigTab:CreateButton({
+    Name = "나락화 수호자 콘픽 적용 + 리셋",
+    Callback = function()
+        -- [[ 1. 위치 및 자동 복귀 설정 ]]
+        local targetPos = Vector3.new(246.6, -983.3, 4647.6)
+        SavedPosition = CFrame.new(targetPos)
+        AutoTpOnDeath = true -- 죽으면 자동 복귀 활성화
+        
+        -- UI 입력창 업데이트
+        if PosInputObject then
+            PosInputObject:Set("246.6, -983.3, 4647.6")
+        end
+
+        -- [[ 2. 오토팜 설정 ]]
+        AutoFarmConfig.Enabled = true
+        AutoFarmConfig.AutoClickEnabled = true
+        AutoFarmConfig.TargetMob = "나락화 수호자"
+        AutoFarmConfig.HeightOffset = 9
+        AttackDirection = "Up"
+        
+        -- 드롭다운 UI 업데이트
+        if MobDropdown then
+            MobDropdown:Refresh({AutoFarmConfig.TargetMob}) -- 목록 갱신
+            MobDropdown:Set(AutoFarmConfig.TargetMob) -- 선택
+        end
+
+        -- [[ 3. 스킬 설정 ]]
+        AutoFarmConfig.AutoSkillEnabled = true
+        AutoFarmConfig.Skills.E = true
+        AutoFarmConfig.Skills.R = true
+        AutoFarmConfig.Skills.T = true
+
+        -- [[ 4. 매크로 방지 설정 ]]
+        AntiMacroEnabled = true
+
+        -- [[ 5. 오토팜 시작 ]]
+        startAutoFarm()
+
+        -- [[ 6. 알림 띄우기 ]]
+        Rayfield:Notify({
+            Title = "설정 적용됨",
+            Content = "설정 완료! 캐릭터를 재설정하여 이동합니다...",
+            Duration = 3,
+            Image = 4483362458,
+        })
+
+        -- [[ 7. 캐릭터 재설정 (Reset) ]]
+        -- 설정을 다 적용한 뒤 죽어야 'AutoTpOnDeath'가 작동함
+        local player = game:GetService("Players").LocalPlayer
+        if player.Character and player.Character:FindFirstChild("Humanoid") then
+            player.Character.Humanoid.Health = 0
+        end
+    end,
+})
+
+ConfigTab:CreateButton({
+    Name = "예티 콘픽 적용 + 리셋",
+    Callback = function()
+        -- [[ 1. 위치 및 자동 복귀 설정 ]]
+        local targetPos = Vector3.new(1370.4, 198.7, 4141.8)
+        SavedPosition = CFrame.new(targetPos)
+        AutoTpOnDeath = true -- 죽으면 자동 복귀 활성화
+        
+        -- UI 입력창 업데이트
+        if PosInputObject then
+            PosInputObject:Set("1370.4, 198.7, 4141.8")
+        end
+
+        -- [[ 2. 오토팜 설정 ]]
+        AutoFarmConfig.Enabled = true
+        AutoFarmConfig.AutoClickEnabled = true
+        AutoFarmConfig.TargetMob = "예티" -- 몹 이름 (한글/영어 확인 필요, 게임 내 이름 기준)
+        AutoFarmConfig.HeightOffset = 9
+        AttackDirection = "Up"
+        
+        -- 드롭다운 UI 업데이트
+        if MobDropdown then
+            MobDropdown:Refresh({AutoFarmConfig.TargetMob}) -- 목록 갱신 (선택된 것만 보이게)
+            MobDropdown:Set(AutoFarmConfig.TargetMob) -- 선택
+        end
+
+        -- [[ 3. 스킬 설정 ]]
+        AutoFarmConfig.AutoSkillEnabled = true
+        AutoFarmConfig.Skills.E = true
+        AutoFarmConfig.Skills.R = true
+        AutoFarmConfig.Skills.T = true
+
+        -- [[ 4. 매크로 방지 설정 ]]
+        AntiMacroEnabled = true
+
+        -- [[ 5. 오토팜 시작 ]]
+        startAutoFarm()
+
+        -- [[ 6. 알림 띄우기 ]]
+        Rayfield:Notify({
+            Title = "예티 콘픽 적용됨",
+            Content = "설정 완료! 캐릭터를 재설정하여 이동합니다...",
+            Duration = 3,
+            Image = 4483362458,
+        })
+
+        -- [[ 7. 캐릭터 재설정 (Reset) ]]
+        local player = game:GetService("Players").LocalPlayer
+        if player.Character and player.Character:FindFirstChild("Humanoid") then
+            player.Character.Humanoid.Health = 0
+        end
+    end,
+})
+
 Rayfield:Notify({
     Title = "스크립트 로드 완료",
     Content = "guns.lol/bgsn1.",
