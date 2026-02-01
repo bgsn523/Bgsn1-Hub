@@ -942,216 +942,117 @@ SpawnerMobGroup:AddButton({
     Tooltip = '화면의 모든 타이머 UI 제거'
 })
 
--- [[ 캐릭터 스킨 변경 그룹 (Main 탭) ]]
-local SkinChangerGroup = Tabs.Main:AddRightGroupbox('캐릭터 체인저')
-local SkinUserIdBox = nil
+-- [[ 매크로 방지 우회 (V11: 랜덤 키패드 완벽 대응 - Text로 버튼 탐색) ]]
+local MacroGroup = Tabs.Main:AddRightGroupbox('매크로 방지 우회')
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local GuiService = game:GetService("GuiService")
+local AntiMacroEnabled = false
 
-SkinChangerGroup:AddInput('SkinUserIdInput', {
-    Default = "",
-    Numeric = true,
-    Text = 'UserId 입력',
-    Tooltip = '변장할 계정의 UserId 입력', -- [cite: 221]
-    Placeholder = '계정 id 입력',
+MacroGroup:AddToggle('AntiMacroToggle', {
+    Text = '매크로 방지 자동 우회',
+    Default = false,
+    Tooltip = '키패드 버튼이 랜덤하게 섞여도 Text로 정확히 찾아 입력합니다.',
     Callback = function(Value)
-        SkinUserIdBox = Value
+        AntiMacroEnabled = Value
     end
 })
 
--- [[ 스킨 변경 함수 ]]
--- 입력받은 UserId의 외형 데이터를 불러와 내 캐릭터에 적용
-local function applyDisguiseByUserId(userId, notifyName)
-    local userIdNum = tonumber(userId)
-    if not userIdNum then
-        game.StarterGui:SetCore("SendNotification", {
-            Title = "Disguise",
-            Text = "UserId를 숫자로 입력하세요!",
-            Duration = 4
-        }) -- [cite: 222]
-        return
-    end
+-- GUI 요소 클릭 함수 (Topbar 동적 보정)
+local function clickGuiObject(obj)
+    if not obj or not obj.Visible or not obj.Active then return end
+    
+    local pos = obj.AbsolutePosition
+    local size = obj.AbsoluteSize
+    local topbarInset = GuiService:GetGuiInset().Y
+    
+    local x = pos.X + (size.X / 2)
+    local y = pos.Y + (size.Y / 2) + topbarInset
 
-    local LocalPlayer = game.Players.LocalPlayer
-    local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-
-    local ok, appearanceModel = pcall(function()
-        return game.Players:GetCharacterAppearanceAsync(userIdNum)
-    end)
-
-    if not ok or not appearanceModel then
-        game.StarterGui:SetCore("SendNotification", {
-            Title = "Disguise",
-            Text = "외형 로드 실패: " .. tostring(userIdNum), -- [cite: 223]
-            Duration = 4
-        })
-        return
-    end
-
-    -- 기존 의상 및 악세서리 제거
-    for _, inst in ipairs(character:GetChildren()) do
-        if inst:IsA("Accessory")
-        or inst:IsA("Shirt")
-        or inst:IsA("Pants")
-        or inst:IsA("CharacterMesh")
-        or inst:IsA("BodyColors")
-        or inst:IsA("ShirtGraphic") then -- [cite: 224]
-            inst:Destroy()
-        end
-    end
-
-    -- 머리 메시 제거
-    local head = character:FindFirstChild("Head")
-    if head then
-        for _, inst in ipairs(head:GetChildren()) do
-            if inst:IsA("SpecialMesh") and inst:GetAttribute("FromMorph") == true then
-                inst:Destroy()
-            end -- [cite: 225]
-        end
-        local face = head:FindFirstChild("face")
-        if face then face:Destroy() end
-    end
-
-    -- 새 외형 적용
-    for _, inst in ipairs(appearanceModel:GetChildren()) do
-        if inst:IsA("Shirt")
-        or inst:IsA("Pants")
-        or inst:IsA("BodyColors")
-        or inst:IsA("ShirtGraphic") then
-            inst.Parent = character
-
-        elseif inst:IsA("Accessory") then -- [cite: 226]
-            inst.Name = "#ACCESSORY_" .. inst.Name
-            inst.Parent = character
-
-        elseif inst:IsA("SpecialMesh") and head then
-            inst:SetAttribute("FromMorph", true)
-            inst.Parent = head
-
-        elseif inst.Name == "R6" and character:FindFirstChildOfClass("Humanoid").RigType == Enum.HumanoidRigType.R6 then
-            local cm = inst:FindFirstChildOfClass("CharacterMesh") -- [cite: 227]
-            if cm then cm.Parent = character end
-
-        elseif inst.Name == "R15" and character:FindFirstChildOfClass("Humanoid").RigType == Enum.HumanoidRigType.R15 then
-            local cm = inst:FindFirstChildOfClass("CharacterMesh")
-            if cm then cm.Parent = character end
-        end
-    end
-
-    -- 얼굴 적용
-    if head then
-        local faceInModel = appearanceModel:FindFirstChild("face") -- [cite: 228]
-        if faceInModel then
-            faceInModel.Parent = head
-        else
-            local decal = Instance.new("Decal")
-            decal.Face = Enum.NormalId.Front
-            decal.Name = "face"
-            decal.Texture = "rbxasset://textures/face.png"
-            decal.Parent = head -- [cite: 229]
-        end
-
-        -- 캐릭터 새로고침 (Parent를 뺐다 껴서 렌더링 업데이트)
-        local parent = character.Parent
-        character.Parent = nil
-        character.Parent = parent
-    end
-
-    game.StarterGui:SetCore("SendNotification", {
-        Title = "Disguise",
-        Text = (notifyName or tostring(userIdNum)) .. " 외형으로 변경됨!",
-        Duration = 5
-    })
+    VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 1)
+    task.wait(0.05)
+    VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 1)
 end
 
-SkinChangerGroup:AddButton({
-    Text = '캐릭터 체인지', -- [cite: 230]
-    Func = function()
-        applyDisguiseByUserId(SkinUserIdBox)
-    end
-})
-
--- [[ 저장된 변장 목록 관리 ]]
-local SavedDisguises = {}
-local SavedDisguiseFileName = "Bgsn1Hub_RPG_SavedDisguises.json"
-
--- 파일 저장 함수
-local function saveDisguisesToFile()
-    if not writefile then return end
-    local ok, encoded = pcall(function()
-        return HttpService:JSONEncode(SavedDisguises)
-    end)
-    if ok then
-        writefile(SavedDisguiseFileName, encoded)
-    end
-end
-
--- 파일 로드 함수
-local function loadSavedDisguises()
-    if not isfile or not readfile then return end
-    if not isfile(SavedDisguiseFileName) then return end
-    local ok, decoded = pcall(function() -- [cite: 231]
-        local content = readfile(SavedDisguiseFileName)
-        return HttpService:JSONDecode(content)
-    end)
-    if ok and type(decoded) == "table" then
-        SavedDisguises = decoded
-    end
-end
-
--- 저장된 변장 버튼 갱신
-local function refreshDisguiseButtons()
-    if not SkinChangerGroup.__SavedButtons then
-        SkinChangerGroup.__SavedButtons = {}
-    end
-    local createdFlags = SkinChangerGroup.__SavedButtons
-
-    for name, userId in pairs(SavedDisguises) do
-        if not createdFlags[name] then -- [cite: 232]
-            createdFlags[name] = true
-            SkinChangerGroup:AddButton({
-                Text = "저장 불러오기: " .. name .. " (" .. userId .. ")",
-                Func = function()
-                    applyDisguiseByUserId(userId, name)
-                end -- [cite: 233]
-            })
+-- 특정 숫자 버튼 찾기 (Text로 검색)
+local function findDigitButton(keyFrame, digit)
+    for _, btn in ipairs(keyFrame:GetChildren()) do
+        if (btn:IsA("TextButton") or btn:IsA("ImageButton")) and btn.Text == digit then
+            return btn
         end
     end
+    return nil
 end
 
--- 현재 입력된 UserId 저장 버튼
-SkinChangerGroup:AddButton({
-    Text = '현재 입력 UserId 저장',
-    Func = function()
-        local userIdNum = tonumber(SkinUserIdBox)
-        if not userIdNum then
-            game.StarterGui:SetCore("SendNotification", {
-                Title = "Disguise 저장 실패", -- [cite: 234]
-                Text = "UserId를 숫자로 입력하세요!",
-                Duration = 4
-            })
-            return
+task.spawn(function()
+    while true do
+        task.wait(1)
+        
+        if AntiMacroEnabled then
+            pcall(function()
+                local player = game.Players.LocalPlayer
+                local gui = player.PlayerGui:FindFirstChild("MacroGui")
+                
+                if gui and gui.Enabled then
+                    local rootFrame = gui:FindFirstChild("Frame") or gui:FindFirstChild("MacroClient") or gui -- 구조 유연하게
+                    if not rootFrame then return end
+                    
+                    local displayFrame = rootFrame:FindFirstChild("Frame")
+                    local keyFrame = rootFrame:FindFirstChild("KeyInputFrame")
+                    local resetFrame = rootFrame:FindFirstChild("KeyReset")
+                    
+                    if displayFrame and keyFrame then
+                        local inputLabel = displayFrame:FindFirstChild("Input") or displayFrame:FindFirstChildWhichIsA("TextLabel")
+                        local outputBox = displayFrame:FindFirstChild("TextBox")
+                        
+                        if inputLabel and outputBox then
+                            local targetNum = inputLabel.Text:match("%d%d%d%d")
+                            
+                            if targetNum and outputBox.Text ~= targetNum then
+                                Library:Notify("매크로 감지! 목표: " .. targetNum)
+                                
+                                -- 1단계: TextBox 클릭해서 키패드 열기 + 포커스
+                                if not keyFrame.Visible then
+                                    clickGuiObject(outputBox)
+                                    task.wait(0.8)
+                                end
+                                
+                                -- 2단계: 리셋으로 입력창 비우기
+                                local resetBtn = resetFrame and resetFrame:FindFirstChild("TextButton")
+                                if resetBtn then
+                                    for i = 1, 5 do
+                                        if outputBox.Text == "" then break end
+                                        clickGuiObject(resetBtn)
+                                        task.wait(0.4)
+                                    end
+                                end
+                                
+                                task.wait(0.5)
+                                
+                                -- 3단계: 숫자 입력 (Text로 버튼 찾아 클릭)
+                                if outputBox.Text == "" then
+                                    for i = 1, #targetNum do
+                                        local digit = string.sub(targetNum, i, i)
+                                        local btn = findDigitButton(keyFrame, digit)
+                                        
+                                        if btn then
+                                            clickGuiObject(btn)
+                                            task.wait(0.35)  -- 입력 안정화
+                                        else
+                                            warn("숫자 버튼 못 찾음: " .. digit)
+                                        end
+                                    end
+                                    print("입력 완료: " .. targetNum)
+                                end
+                                
+                                task.wait(2.5)
+                            end
+                        end
+                    end
+                end
+            end)
         end
-
-        local ok, name = pcall(function()
-            return game.Players:GetNameFromUserIdAsync(userIdNum) -- [cite: 235]
-        end)
-        if not ok or not name then
-            name = "User_" .. tostring(userIdNum)
-        end
-
-        SavedDisguises[name] = userIdNum
-        saveDisguisesToFile()
-        refreshDisguiseButtons()
-
-        game.StarterGui:SetCore("SendNotification", {
-            Title = "Disguise 저장됨", -- [cite: 236]
-            Text = name .. "(" .. userIdNum .. ") 저장 완료!",
-            Duration = 5
-        })
     end
-})
-
-loadSavedDisguises()
-refreshDisguiseButtons()
+end)
 
 -- [[ 💾 위치 저장 및 자동 복귀 (양방향 동기화 버전) ]]
 local SavePosGroup = Tabs.Main:AddRightGroupbox('위치 저장')
@@ -1782,80 +1683,7 @@ LunaVillageGroup:AddButton({
 local TeleportGroup = Tabs.Teleport:AddLeftGroupbox('텔레포트 위치')
 TeleportGroup:AddButton({ Text = '1세계 포탈', Func = function() teleportTo("1세계 포탈") end })
 
--- [[ 매크로 방지 우회 (토글형 + 자동 감지 시스템) ]]
-local MacroGroup = Tabs.Misc:AddLeftGroupbox('매크로 방지 우회')
 
-local AntiMacroEnabled = false -- 토글 상태 저장 변수
-
--- 1. 토글 버튼 생성
-MacroGroup:AddToggle('AntiMacroToggle', {
-    Text = '매크로 방지 자동 우회',
-    Default = false,
-    Tooltip = '켜두면 숫자를 입력하라는 창이 뜰 때 자동으로 입력합니다.',
-    Callback = function(Value)
-        AntiMacroEnabled = Value
-        if Value then
-            Library:Notify("매크로 방지 감시 시작")
-        else
-            Library:Notify("매크로 방지 감시 종료")
-        end
-    end
-})
-
--- 2. 감시 및 자동 입력 로직 (백그라운드에서 항상 대기)
-task.spawn(function()
-    while true do
-        task.wait(1) -- 1초 간격 검사
-        
-        if AntiMacroEnabled then
-            pcall(function()
-                local player = game.Players.LocalPlayer
-                if not player then return end
-                
-                local gui = player.PlayerGui:FindFirstChild("MacroGui")
-                
-                -- GUI가 있고 화면에 보일 때만 작동
-                if gui and gui.Enabled and gui:FindFirstChild("Frame") then
-                    local mainFrame = gui.Frame:FindFirstChild("Frame")
-                    
-                    if mainFrame then
-                        local inputLabel = mainFrame:FindFirstChild("Input")
-                        local inputTextBox = mainFrame:FindFirstChild("TextBox")
-                        
-                        -- 라벨과 입력창이 모두 존재할 때
-                        if inputLabel and inputTextBox then
-                            -- 질문에서 숫자만 추출
-                            local targetNum = inputLabel.Text:match("%d+")
-                            
-                            -- 숫자가 있고, 현재 입력창 내용이 정답과 다를 때만 실행 (중복 입력 방지)
-                            if targetNum and inputTextBox.Text ~= targetNum then
-                                
-                                -- 1. 텍스트 박스 활성화 (마우스로 클릭한 효과)
-                                inputTextBox:CaptureFocus()
-                                task.wait(0.1)
-                                
-                                -- 2. 정답 입력
-                                inputTextBox.Text = targetNum
-                                task.wait(0.1)
-                                
-                                -- 3. [핵심] 엔터키(Return) 누르기 시뮬레이션
-                                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Return, false, game)
-                                task.wait(0.05)
-                                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Return, false, game)
-                                
-                                -- 4. 포커스 해제 (입력 완료 처리)
-                                inputTextBox:ReleaseFocus()
-                                
-                                print("매크로 우회: " .. targetNum .. " 입력 후 엔터 전송됨")
-                                Library:Notify("매크로 입력 완료: " .. targetNum)
-                            end
-                        end
-                    end
-                end
-            end)
-        end
-    end
-end)
 
 local ScriptGroup = Tabs.Misc:AddRightGroupbox('스크립트')
 -- Infinite Yield 실행 (유명한 관리자 명령어 스크립트)
@@ -1991,6 +1819,217 @@ ScriptGroup:AddButton({
         end)
     end
 })
+
+-- [[ 캐릭터 스킨 변경 그룹 (Main 탭) ]]
+local SkinChangerGroup = Tabs.Misc:AddRightGroupbox('캐릭터 체인저')
+local SkinUserIdBox = nil
+
+SkinChangerGroup:AddInput('SkinUserIdInput', {
+    Default = "",
+    Numeric = true,
+    Text = 'UserId 입력',
+    Tooltip = '변장할 계정의 UserId 입력', -- [cite: 221]
+    Placeholder = '계정 id 입력',
+    Callback = function(Value)
+        SkinUserIdBox = Value
+    end
+})
+
+-- [[ 스킨 변경 함수 ]]
+-- 입력받은 UserId의 외형 데이터를 불러와 내 캐릭터에 적용
+local function applyDisguiseByUserId(userId, notifyName)
+    local userIdNum = tonumber(userId)
+    if not userIdNum then
+        game.StarterGui:SetCore("SendNotification", {
+            Title = "Disguise",
+            Text = "UserId를 숫자로 입력하세요!",
+            Duration = 4
+        }) -- [cite: 222]
+        return
+    end
+
+    local LocalPlayer = game.Players.LocalPlayer
+    local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+
+    local ok, appearanceModel = pcall(function()
+        return game.Players:GetCharacterAppearanceAsync(userIdNum)
+    end)
+
+    if not ok or not appearanceModel then
+        game.StarterGui:SetCore("SendNotification", {
+            Title = "Disguise",
+            Text = "외형 로드 실패: " .. tostring(userIdNum), -- [cite: 223]
+            Duration = 4
+        })
+        return
+    end
+
+    -- 기존 의상 및 악세서리 제거
+    for _, inst in ipairs(character:GetChildren()) do
+        if inst:IsA("Accessory")
+        or inst:IsA("Shirt")
+        or inst:IsA("Pants")
+        or inst:IsA("CharacterMesh")
+        or inst:IsA("BodyColors")
+        or inst:IsA("ShirtGraphic") then -- [cite: 224]
+            inst:Destroy()
+        end
+    end
+
+    -- 머리 메시 제거
+    local head = character:FindFirstChild("Head")
+    if head then
+        for _, inst in ipairs(head:GetChildren()) do
+            if inst:IsA("SpecialMesh") and inst:GetAttribute("FromMorph") == true then
+                inst:Destroy()
+            end -- [cite: 225]
+        end
+        local face = head:FindFirstChild("face")
+        if face then face:Destroy() end
+    end
+
+    -- 새 외형 적용
+    for _, inst in ipairs(appearanceModel:GetChildren()) do
+        if inst:IsA("Shirt")
+        or inst:IsA("Pants")
+        or inst:IsA("BodyColors")
+        or inst:IsA("ShirtGraphic") then
+            inst.Parent = character
+
+        elseif inst:IsA("Accessory") then -- [cite: 226]
+            inst.Name = "#ACCESSORY_" .. inst.Name
+            inst.Parent = character
+
+        elseif inst:IsA("SpecialMesh") and head then
+            inst:SetAttribute("FromMorph", true)
+            inst.Parent = head
+
+        elseif inst.Name == "R6" and character:FindFirstChildOfClass("Humanoid").RigType == Enum.HumanoidRigType.R6 then
+            local cm = inst:FindFirstChildOfClass("CharacterMesh") -- [cite: 227]
+            if cm then cm.Parent = character end
+
+        elseif inst.Name == "R15" and character:FindFirstChildOfClass("Humanoid").RigType == Enum.HumanoidRigType.R15 then
+            local cm = inst:FindFirstChildOfClass("CharacterMesh")
+            if cm then cm.Parent = character end
+        end
+    end
+
+    -- 얼굴 적용
+    if head then
+        local faceInModel = appearanceModel:FindFirstChild("face") -- [cite: 228]
+        if faceInModel then
+            faceInModel.Parent = head
+        else
+            local decal = Instance.new("Decal")
+            decal.Face = Enum.NormalId.Front
+            decal.Name = "face"
+            decal.Texture = "rbxasset://textures/face.png"
+            decal.Parent = head -- [cite: 229]
+        end
+
+        -- 캐릭터 새로고침 (Parent를 뺐다 껴서 렌더링 업데이트)
+        local parent = character.Parent
+        character.Parent = nil
+        character.Parent = parent
+    end
+
+    game.StarterGui:SetCore("SendNotification", {
+        Title = "Disguise",
+        Text = (notifyName or tostring(userIdNum)) .. " 외형으로 변경됨!",
+        Duration = 5
+    })
+end
+
+SkinChangerGroup:AddButton({
+    Text = '캐릭터 체인지', -- [cite: 230]
+    Func = function()
+        applyDisguiseByUserId(SkinUserIdBox)
+    end
+})
+
+-- [[ 저장된 변장 목록 관리 ]]
+local SavedDisguises = {}
+local SavedDisguiseFileName = "Bgsn1Hub_RPG_SavedDisguises.json"
+
+-- 파일 저장 함수
+local function saveDisguisesToFile()
+    if not writefile then return end
+    local ok, encoded = pcall(function()
+        return HttpService:JSONEncode(SavedDisguises)
+    end)
+    if ok then
+        writefile(SavedDisguiseFileName, encoded)
+    end
+end
+
+-- 파일 로드 함수
+local function loadSavedDisguises()
+    if not isfile or not readfile then return end
+    if not isfile(SavedDisguiseFileName) then return end
+    local ok, decoded = pcall(function() -- [cite: 231]
+        local content = readfile(SavedDisguiseFileName)
+        return HttpService:JSONDecode(content)
+    end)
+    if ok and type(decoded) == "table" then
+        SavedDisguises = decoded
+    end
+end
+
+-- 저장된 변장 버튼 갱신
+local function refreshDisguiseButtons()
+    if not SkinChangerGroup.__SavedButtons then
+        SkinChangerGroup.__SavedButtons = {}
+    end
+    local createdFlags = SkinChangerGroup.__SavedButtons
+
+    for name, userId in pairs(SavedDisguises) do
+        if not createdFlags[name] then -- [cite: 232]
+            createdFlags[name] = true
+            SkinChangerGroup:AddButton({
+                Text = "저장 불러오기: " .. name .. " (" .. userId .. ")",
+                Func = function()
+                    applyDisguiseByUserId(userId, name)
+                end -- [cite: 233]
+            })
+        end
+    end
+end
+
+-- 현재 입력된 UserId 저장 버튼
+SkinChangerGroup:AddButton({
+    Text = '현재 입력 UserId 저장',
+    Func = function()
+        local userIdNum = tonumber(SkinUserIdBox)
+        if not userIdNum then
+            game.StarterGui:SetCore("SendNotification", {
+                Title = "Disguise 저장 실패", -- [cite: 234]
+                Text = "UserId를 숫자로 입력하세요!",
+                Duration = 4
+            })
+            return
+        end
+
+        local ok, name = pcall(function()
+            return game.Players:GetNameFromUserIdAsync(userIdNum) -- [cite: 235]
+        end)
+        if not ok or not name then
+            name = "User_" .. tostring(userIdNum)
+        end
+
+        SavedDisguises[name] = userIdNum
+        saveDisguisesToFile()
+        refreshDisguiseButtons()
+
+        game.StarterGui:SetCore("SendNotification", {
+            Title = "Disguise 저장됨", -- [cite: 236]
+            Text = name .. "(" .. userIdNum .. ") 저장 완료!",
+            Duration = 5
+        })
+    end
+})
+
+loadSavedDisguises()
+refreshDisguiseButtons()
 
 -- [[ 스카이박스 변경 기능 ]]
 local SkyGroup = Tabs.Misc:AddLeftGroupbox('스카이 설정')
