@@ -469,6 +469,155 @@ task.spawn(function()
     end
 end)
 
+-- [[ ⚡ 매크로 방지 우회 V12 (신호 강제형 - 강력 추천) ]] --
+-- 좌표 계산 없이 스크립트 신호를 직접 실행합니다. (밀림 현상 0%)
+
+MainTab:CreateSection("매크로 방지 우회 (V12 - 신호 강제)")
+
+local AntiMacroSignalEnabled = false
+
+-- [[ 1. 토글 생성 ]]
+MainTab:CreateToggle({
+    Name = "매크로 방지 (신호 강제 방식)",
+    CurrentValue = false,
+    Flag = "AntiMacroSignal",
+    Callback = function(Value)
+        AntiMacroSignalEnabled = Value
+        if Value then
+            Rayfield:Notify({
+                Title = "모드 활성화",
+                Content = "좌표 무시/신호 강제 모드가 켜졌습니다.\n(익스큐터가 getconnections를 지원해야 합니다)",
+                Duration = 3,
+                Image = 4483362458,
+            })
+        end
+    end,
+})
+
+-- [[ 2. 핵심 함수: 버튼 강제 실행 ]]
+local function fireButtonSignal(btn)
+    if not btn or not btn.Active or not btn.Visible then return end
+    
+    local success = false
+    
+    -- 1순위: getconnections를 이용한 신호 강제 발동
+    if getconnections then
+        local events = {
+            btn.MouseButton1Click,
+            btn.MouseButton1Down,
+            btn.Activated -- 모바일 터치 이벤트
+        }
+        
+        for _, event in ipairs(events) do
+            for _, connection in ipairs(getconnections(event)) do
+                connection:Fire() -- 함수 강제 실행
+                success = true
+            end
+        end
+    end
+
+    -- 2순위: 실패 시 비상용 좌표 클릭 (보정값 제거된 순수 중앙 좌표)
+    if not success then
+        local pos = btn.AbsolutePosition
+        local size = btn.AbsoluteSize
+        local x = pos.X + (size.X / 2)
+        local y = pos.Y + (size.Y / 2)
+        
+        game:GetService("VirtualInputManager"):SendMouseButtonEvent(x, y, 0, true, game, 1)
+        task.wait(0.05)
+        game:GetService("VirtualInputManager"):SendMouseButtonEvent(x, y, 0, false, game, 1)
+    end
+end
+
+-- 버튼 찾기 헬퍼 (Text 기준)
+local function findDigitButtonV12(keyFrame, digit)
+    for _, btn in ipairs(keyFrame:GetChildren()) do
+        if (btn:IsA("TextButton") or btn:IsA("ImageButton")) and btn.Text == digit then
+            return btn
+        end
+    end
+    return nil
+end
+
+-- [[ 3. 감지 및 우회 루프 ]]
+task.spawn(function()
+    while true do
+        task.wait(1)
+        
+        if AntiMacroSignalEnabled then
+            pcall(function()
+                local player = game:GetService("Players").LocalPlayer
+                if not player then return end
+
+                local gui = player.PlayerGui:FindFirstChild("MacroGui")
+                if gui and gui.Enabled then
+                    
+                    local rootFrame = gui:FindFirstChild("Frame") or gui:FindFirstChild("MacroClient") or gui
+                    if not rootFrame then return end
+                    
+                    local displayFrame = rootFrame:FindFirstChild("Frame")
+                    local keyFrame = rootFrame:FindFirstChild("KeyInputFrame")
+                    local resetFrame = rootFrame:FindFirstChild("KeyReset")
+                    
+                    if displayFrame and keyFrame then
+                        local inputLabel = displayFrame:FindFirstChild("Input") or displayFrame:FindFirstChildWhichIsA("TextLabel")
+                        local outputBox = displayFrame:FindFirstChild("TextBox")
+                        
+                        if inputLabel and outputBox then
+                            local targetNum = inputLabel.Text:match("%d%d%d%d")
+                            
+                            -- 입력해야 할 상황이면
+                            if targetNum and outputBox.Text ~= targetNum then
+                                
+                                Rayfield:Notify({
+                                    Title = "매크로 감지 (V12)",
+                                    Content = "신호 강제 입력 시도: " .. targetNum,
+                                    Duration = 3,
+                                    Image = 4483362458,
+                                })
+
+                                -- 1. 키패드 열기 (TextBox 강제 클릭)
+                                if not keyFrame.Visible then
+                                    fireButtonSignal(outputBox) -- 텍스트박스도 버튼 취급해서 클릭
+                                    task.wait(0.8)
+                                end
+
+                                -- 2. 초기화 (Reset)
+                                local resetBtn = resetFrame and resetFrame:FindFirstChild("TextButton")
+                                if resetBtn then
+                                    for i = 1, 5 do
+                                        if outputBox.Text == "" then break end
+                                        fireButtonSignal(resetBtn)
+                                        task.wait(0.4)
+                                    end
+                                end
+
+                                task.wait(0.5)
+
+                                -- 3. 숫자 입력 (Signal Fire)
+                                if outputBox.Text == "" then
+                                    for i = 1, #targetNum do
+                                        local digit = string.sub(targetNum, i, i)
+                                        local btn = findDigitButtonV12(keyFrame, digit)
+                                        
+                                        if btn then
+                                            fireButtonSignal(btn) -- 좌표 없이 즉시 실행
+                                            task.wait(0.2) -- 신호 방식은 빨라서 딜레이를 짧게 줘도 됨
+                                        end
+                                    end
+                                    print("V12 입력 완료: " .. targetNum)
+                                end
+                                
+                                task.wait(2.5)
+                            end
+                        end
+                    end
+                end
+            end)
+        end
+    end
+end)
+
 -- [[ 스킬 설정 섹션 ]]
 MainTab:CreateSection("스킬 설정")
 
