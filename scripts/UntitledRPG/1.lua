@@ -272,18 +272,38 @@ local function startAutoFarm()
 
         local currentTarget = AutoFarmConfig.CurrentTarget
 
-        -- [[ 타겟이 없을 때 대기 로직 ]] 
+        -- [[ 타겟이 없을 때 대기 로직 (좌표 오류 방지 안전장치 추가) ]] 
         if not currentTarget then
             hrp.Velocity = Vector3.new(0, 0, 0)
             
+            -- [안전장치 1] 현재 내 위치가 비정상(나락/우주)이면 대기 위치로 설정하지 않음
+            -- Y좌표가 -500보다 낮거나 10,000보다 높으면 오류로 판단
+            if hrp.Position.Y < -500 or hrp.Position.Y > 10000 then
+                waitCFrame = nil -- 잘못된 위치 저장 방지
+                return -- 아무것도 하지 않고 다음 프레임까지 대기 (낙사해서 리스폰되길 기다림)
+            end
+
             if not waitCFrame then
-                -- 현재 위치에서 위로 10만큼 설정
+                -- 대기 위치가 없으면 현재 위치 위로 설정
+                waitCFrame = hrp.CFrame * CFrame.new(0, 10, 0)
+            
+            -- [안전장치 2] 이미 저장된 대기 위치가 오류 좌표라면 즉시 폐기
+            elseif waitCFrame.Position.Y < -500 or waitCFrame.Position.Y > 10000 then
+                waitCFrame = nil
+                return
+
+            -- [텔레포트 감지] 사용자가 50스터드 이상 이동했으면 대기 위치 갱신
+            elseif (hrp.Position - waitCFrame.Position).Magnitude > 50 then
                 waitCFrame = hrp.CFrame * CFrame.new(0, 10, 0)
             end
             
-            hrp.CFrame = waitCFrame 
+            -- 위치 고정 (안전할 때만 실행됨)
+            if waitCFrame then
+                hrp.CFrame = waitCFrame 
+            end
             return
         else
+            -- 타겟을 찾으면 대기 위치 초기화
             waitCFrame = nil
         end
 
