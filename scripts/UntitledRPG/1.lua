@@ -996,10 +996,16 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local GuiService = game:GetService("GuiService")
 local AntiMacroEnabled = false
 
+-- [[ 3초 ~ 4초 랜덤 딜레이 함수 ]] --
+local function randomActionWait()
+    local delay = math.random(300, 400) / 100 -- 3.00 ~ 4.00초 사이 난수 생성
+    task.wait(delay)
+end
+
 MacroGroup:AddToggle('AntiMacroToggle', {
     Text = '매크로 방지 자동 우회',
     Default = false,
-    Tooltip = '마우스 움직임으로 매크로 방지 우회 (구림)',
+    Tooltip = '마우스 움직임으로 매크로 방지 우회 (느림)',
     Callback = function(Value)
         AntiMacroEnabled = Value
     end
@@ -1017,7 +1023,7 @@ local function clickGuiObject(obj)
     local y = pos.Y + (size.Y / 2) + topbarInset
 
     VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 1)
-    task.wait(0.05)
+    task.wait(0.05) -- 클릭 자체의 지속 시간은 짧게 유지 (드래그 판정 방지)
     VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 1)
 end
 
@@ -1041,7 +1047,7 @@ task.spawn(function()
                 local gui = player.PlayerGui:FindFirstChild("MacroGui")
                 
                 if gui and gui.Enabled then
-                    local rootFrame = gui:FindFirstChild("Frame") or gui:FindFirstChild("MacroClient") or gui -- 구조 유연하게
+                    local rootFrame = gui:FindFirstChild("Frame") or gui:FindFirstChild("MacroClient") or gui
                     if not rootFrame then return end
                     
                     local displayFrame = rootFrame:FindFirstChild("Frame")
@@ -1060,8 +1066,8 @@ task.spawn(function()
                                 
                                 -- 1단계: TextBox 클릭해서 키패드 열기 + 포커스
                                 if not keyFrame.Visible then
+                                    randomActionWait() -- [행동 전 딜레이]
                                     clickGuiObject(outputBox)
-                                    task.wait(0.8)
                                 end
                                 
                                 -- 2단계: 리셋으로 입력창 비우기
@@ -1069,12 +1075,10 @@ task.spawn(function()
                                 if resetBtn then
                                     for i = 1, 5 do
                                         if outputBox.Text == "" then break end
+                                        randomActionWait() -- [행동 전 딜레이]
                                         clickGuiObject(resetBtn)
-                                        task.wait(0.4)
                                     end
                                 end
-                                
-                                task.wait(0.5)
                                 
                                 -- 3단계: 숫자 입력 (Text로 버튼 찾아 클릭)
                                 if outputBox.Text == "" then
@@ -1083,8 +1087,8 @@ task.spawn(function()
                                         local btn = findDigitButton(keyFrame, digit)
                                         
                                         if btn then
+                                            randomActionWait() -- [행동 전 딜레이] 버튼 누르기 전에 대기
                                             clickGuiObject(btn)
-                                            task.wait(0.35)  -- 입력 안정화
                                         else
                                             warn("숫자 버튼 못 찾음: " .. digit)
                                         end
@@ -1092,7 +1096,7 @@ task.spawn(function()
                                     print("입력 완료: " .. targetNum)
                                 end
                                 
-                                task.wait(2.5)
+                                task.wait(2.5) -- 모든 입력이 끝나고 매크로 창이 닫힐 때까지 대기
                             end
                         end
                     end
@@ -1115,30 +1119,28 @@ MacroGroup:AddToggle('AntiMacroSignalToggle', {
     Callback = function(Value)
         AntiMacroSignalEnabled = Value
         if Value then
-            Library:Notify("V12 모드 활성화: 신호 강제 방식")
+            Library:Notify("V12 모드 활성화: 신호 강제 방식 (행동 전 딜레이)")
         end
     end
 })
 
--- 2. 핵심 함수: 버튼 강제 실행 (2순위 기능 제거됨)
+-- 2. 핵심 함수: 버튼 강제 실행
 local function fireButtonSignal(btn)
     if not btn or not btn.Active or not btn.Visible then return end
     
-    -- 1순위: getconnections를 이용한 신호 강제 발동
     if getconnections then
         local events = {
             btn.MouseButton1Click,
             btn.MouseButton1Down,
-            btn.Activated -- 모바일/PC 공용 이벤트
+            btn.Activated
         }
         
         for _, event in ipairs(events) do
             for _, connection in ipairs(getconnections(event)) do
-                connection:Fire() -- 함수 강제 실행
+                connection:Fire()
             end
         end
     end
-    -- 요청하신 대로 2순위(좌표 클릭) 기능은 제거되었습니다.
 end
 
 -- 버튼 찾기 헬퍼
@@ -1187,8 +1189,8 @@ task.spawn(function()
 
                                 -- 1. 키패드 열기 (TextBox 강제 신호 발송)
                                 if not keyFrame.Visible then
+                                    randomActionWait() -- [행동 전 딜레이]
                                     fireButtonSignal(outputBox)
-                                    task.wait(0.8)
                                 end
 
                                 -- 2. 초기화 (Reset)
@@ -1196,12 +1198,10 @@ task.spawn(function()
                                 if resetBtn then
                                     for i = 1, 5 do
                                         if outputBox.Text == "" then break end
+                                        randomActionWait() -- [행동 전 딜레이]
                                         fireButtonSignal(resetBtn)
-                                        task.wait(0.4)
                                     end
                                 end
-
-                                task.wait(0.5)
 
                                 -- 3. 숫자 입력 (Signal Fire)
                                 if outputBox.Text == "" then
@@ -1210,14 +1210,14 @@ task.spawn(function()
                                         local btn = findDigitButtonV12(keyFrame, digit)
                                         
                                         if btn then
+                                            randomActionWait() -- [행동 전 딜레이] 신호를 보내기 전에 대기
                                             fireButtonSignal(btn) -- 좌표 없이 즉시 실행
-                                            task.wait(0.2) -- 신호 방식은 빨라서 딜레이를 짧게 줘도 됨
                                         end
                                     end
                                     print("V12 입력 완료: " .. targetNum)
                                 end
                                 
-                                task.wait(2.5)
+                                task.wait(2.5) -- 완료 후 안정화 대기
                             end
                         end
                     end
